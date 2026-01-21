@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>frontier_ws</name>
+  <version>0.0.1</version>
+  <description>Frontier-based exploration using A* planning with obstacle threshold and inflation, following path via cmd_vel (ROS2).</description>
+
+  <maintainer email="hdzggg@seoultech.ac.kr">your_name</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>nav_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>tf2</depend>
+<depend>tf2_ros</depend>	
+<depend>tf2_geometry_msgs</depend>
+<depend>visualization_msgs</depend>
+<depend>nav2_msgs</depend>
+<depend>rclcpp_action</depend>
+
+
+  <!-- 필요하면 추가 (TF로 yaw 뽑거나 transform 쓰면) -->
+  <!-- <depend>tf2</depend> -->
+  <!-- <depend>tf2_ros</depend> -->
+  <!-- <depend>tf2_geometry_msgs</depend> -->
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
+

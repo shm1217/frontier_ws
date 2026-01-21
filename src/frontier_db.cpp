@@ -1,4 +1,4 @@
-// 가장 가까운 프론티어 셀 기반 // 싱글 로봇
+// dbscan clustering으로 프론티어 대표점 추출 후 경로 추종 // 싱글 로봇
 // 장애물 회피 + 장애물과 가까운 프론티어셀은 제거하는 식으로 작동
 
 #include <rclcpp/rclcpp.hpp>
@@ -65,7 +65,7 @@ public:
     path_clearance_m_         = this->declare_parameter<double>("path_clearance_m", 0.12);
 
     infl_viz_radius_m_        = this->declare_parameter<double>("infl_viz_radius_m", 3.0);
-    infl_marker_pub_          = this->create_publisher<visualization_msgs::msg::Marker>("/inflation_marker", 10);
+    infl_marker_pub_          = this->create_publisher<visualization_msgs::msg::Marker>("/i", 10);
 
     // 로봇 스턱을 줄이기 위해서
     stuck_time_s_ = this->declare_parameter<double>("stuck_time_s", 2.0);
@@ -102,8 +102,8 @@ public:
     );
 
     cmd_pub_ = this->create_publisher<geometry_msgs::msg::Twist>(cmd_topic_, 10);
-    path_marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("/path_marker", 10);
-    frontier_marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("/frontier_markers", 10);
+    path_marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("/p", 10);
+    frontier_marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("/f", 10);
 
     scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
       "/scan", 10, std::bind(&FrontierExplorerAStar::onScan, this, std::placeholders::_1));
@@ -114,8 +114,8 @@ public:
     );
 
     RCLCPP_WARN(this->get_logger(),
-      "Started map_topic=%s cmd_topic=%s map_frame=%s base_frame=%s free<=%d blocked>=%d infl=%.2fm frontierR=%.1fm",
-      map_topic_.c_str(), cmd_topic_.c_str(), map_frame_.c_str(), base_frame_.c_str(),
+      "Started map_frame=%s base_frame=%s free<=%d blocked>=%d infl=%.2fm frontierR=%.1fm",
+      map_frame_.c_str(), base_frame_.c_str(),
       free_threshold_, obstacle_threshold_, inflation_radius_m_, frontier_search_radius_m_);
   }
 
@@ -649,13 +649,13 @@ private:
 
   
   std::vector<GridPose> astar(const GridPose &start, const GridPose &goal,
-                             const std::vector<uint8_t> &blockedMask) const {
+                             const std::vector<uint8_t> &obsMaskInflated) const {
     int W = (int)map_.info.width;
     int H = (int)map_.info.height;
 
     auto inside = [&](int x,int y){ return (0<=x && x<W && 0<=y && y<H); };
     if (!inside(start.x,start.y) || !inside(goal.x,goal.y)) return {};
-    if (blockedMask[IDX(start.x,start.y,W)] || blockedMask[IDX(goal.x,goal.y,W)]) return {};
+    if (obsMaskInflated[IDX(start.x,start.y,W)] || obsMaskInflated[IDX(goal.x,goal.y,W)]) return {};
 
     auto h = [&](int x,int y){
       int dx = std::abs(x - goal.x);
@@ -700,19 +700,19 @@ private:
         if (!inside(nx,ny)) continue;
 
         int nid = IDX(nx,ny,W);
-        if (blockedMask[nid]) continue;
+        if (obsMaskInflated[nid]) continue;
 
         bool diagonal = (dx8[k] != 0 && dy8[k] != 0);
         int step_cost = diagonal ? 14 : 10;
 
-        // ✅ 코너 끼고 대각선 “모서리 통과” 방지 (중요!)
+    
         if (diagonal) {
           int n1 = IDX(cur.x + dx8[k], cur.y, W);
           int n2 = IDX(cur.x, cur.y + dy8[k], W);
-          if (blockedMask[n1] || blockedMask[n2]) continue;
+          if (obsMaskInflated[n1] || obsMaskInflated[n2]) continue;
         }
 
-        int ng = cur.g + 1;
+        int ng = cur.g + step_cost;
         if (ng < gscore[nid]) {
           gscore[nid] = ng;
           came[nid] = id;
@@ -770,7 +770,7 @@ private:
       // 목표가 blocked면 스킵(unknown/인플레/레이저)
       if (blockedMask[IDX(f.x,f.y,W)]) continue;
 
-      auto p = astar(robot_g, f, blockedMask);
+      auto p = astar(robot_g, f, obsMaskInflated);
       if (p.empty()) continue;
 
       if (pathTailTooCloseToRawObstacle(p, obsMaskRaw)) continue;
@@ -940,21 +940,11 @@ private:
     double left  = minRange(0.3, 1.0);
     double right = minRange(-1.0, -0.3);
 
-    double turn = (left > right) ? 1.0 : -1.0;
-
-    // 1) 아주 가까우면: 제자리 회전 (후진 금지)
-    if (front < 0.20) {
-      cmd.linear.x = 0.0;
-      cmd.angular.z = 0.8 * turn;
-    }
-    // 2) 가까우면: 느린 전진 + 회전 (벽 따라 미끄러지듯 빠져나오기)
-    else if (front < AVOID_DIST) {
-      cmd.linear.x = 0.06;
-      cmd.angular.z = 0.6 * turn;
-    }
-    // 3) 충분히 멀면: 회피 종료 조건은 onTimer가 판단 (여긴 그냥 부드럽게)
-    else {
-      cmd.linear.x = 0.10;
+    if (front < AVOID_DIST) {
+      cmd.linear.x = -0.05;
+      cmd.angular.z = (left > right) ? 0.6 : -0.6;
+    } else {
+      cmd.linear.x = 0.15;
       cmd.angular.z = 0.0;
     }
 
@@ -993,7 +983,7 @@ private:
 
     wp_idx_ = findNearestIndexOnPath(path_, wp_idx_, 25);
 
-    int lookahead_cells = 5;
+    int lookahead_cells = 3;
     int target_idx = std::min(wp_idx_ + lookahead_cells, (int)path_.size() - 1);
 
     const auto& target = path_[target_idx];
@@ -1031,26 +1021,6 @@ private:
       cmd.linear.x  = clampd(0.6 * dist, 0.05, max_lin_vel_);
       cmd.angular.z = clampd(2.0 * ang_err, -max_ang_vel_, max_ang_vel_);
     }
-
-    // ✅ 여기( publish 직전 )에 추가
-    double front = minRange(-0.35, 0.35);
-    double left  = minRange(0.35,  1.2);
-    double right = minRange(-1.2, -0.35);
-    double side_min = std::min(left, right);
-
-    double slow_dist = 0.55;
-    double stop_dist = 0.35;
-
-    double scale = 1.0;
-    double dmin = std::min(front, side_min);
-    if (dmin < slow_dist) {
-        scale = (dmin - stop_dist) / (slow_dist - stop_dist);
-        scale = clampd(scale, 0.05, 1.0);
-    }
-
-    cmd.linear.x  *= scale;
-    cmd.angular.z *= clampd(0.4 + 0.6*scale, 0.4, 1.0);
-
 
     cmd_pub_->publish(cmd);
   }
@@ -1148,11 +1118,7 @@ void publishWarmupMotion() {
 
     // 1) 회피
     double front = minRange(-0.3, 0.3);
-    double left  = minRange(0.3, 1.0);
-    double right = minRange(-1.0, -0.3);
-    double side_min = std::min(left, right);
 
-  
     if (!avoiding_ && has_scan_ && front < AVOID_DIST) {
       avoiding_ = true;
       path_.clear();
@@ -1160,7 +1126,7 @@ void publishWarmupMotion() {
     }
 
     if (avoiding_) {
-      if (has_scan_ && front > AVOID_END_DIST && side_min > 0.35) {
+      if (has_scan_ && front > AVOID_END_DIST) {
         avoiding_ = false;
         path_.clear();
         wp_idx_ = 0;
@@ -1176,22 +1142,24 @@ void publishWarmupMotion() {
     auto obsMaskInflated = buildObstacleInflatedMask();
     auto obsMaskRaw      = buildObstacleRawMask();
 
-    // ✅ reachable 계산 전용 마스크(복사본) + keep-open 적용
-    auto obsReach = obsMaskInflated;   // reachable은 레이저/unknown까지 막으면 너무 보수적이라 이걸 추천
-    {
     int W = (int)map_.info.width;
-    int keep = 3; // 2~4부터 튜닝
+    int keep = 2;
     for (int dy=-keep; dy<=keep; ++dy) {
         for (int dx=-keep; dx<=keep; ++dx) {
         int nx = robot_g.x + dx;
         int ny = robot_g.y + dy;
         if (!inBounds(nx, ny)) continue;
-
-        int v = map_.data[IDX(nx, ny, W)];
-        if (v == UNKNOWN) continue;   // unknown은 열지 말기
-        obsReach[IDX(nx, ny, W)] = 0; // ✅ 로봇 주변만 길을 "열어줌"
+        obsMaskInflated[IDX(nx, ny, W)] = 0; 
         }
     }
+
+    for (int dy=-keep; dy<=keep; ++dy) {
+        for (int dx=-keep; dx<=keep; ++dx) {
+        int nx = robot_g.x + dx;
+        int ny = robot_g.y + dy;
+        if (!inBounds(nx, ny)) continue;
+        blockedMask[IDX(nx, ny, W)] = 0; 
+        }
     }
 
     publishInflationMaskMarker(blockedMask, robot_g);
@@ -1209,7 +1177,6 @@ void publishWarmupMotion() {
       int W = (int)map_.info.width;
       int i0 = std::max(0, idx - 1);
       int i1 = std::min((int)path.size() - 1, idx + 3);
-      // ✅ 경로의 마지막 15%는 검사 제외
       int tail_cut = (int)(path.size() * 0.85);
       i1 = std::min(i1, tail_cut);
       for (int i=i0; i<=i1; ++i) {
@@ -1228,13 +1195,12 @@ void publishWarmupMotion() {
       return; // 다음 tick에서 새 plan
     }
 
-    // 2) "제자리 빙글빙글/정체"면 일정 시간 후 replan
-    //    (간단하게 static으로 상태 유지)
+    // 2) 빙글빙글하거나 정체되면 replan
     static rclcpp::Time last_progress_time = this->now();
     static double last_x = robot_.x, last_y = robot_.y;
     static int last_wp = 0;
 
-    // path를 clear하는 순간엔 stuck 타이머도 리셋해야 "stop 루프"를 안 탐
+  
     auto resetStuckState = [&](){
       last_progress_time = this->now();
       last_x = robot_.x;
@@ -1267,20 +1233,18 @@ void publishWarmupMotion() {
     return;
   }
 
-  // =====================
-// 2) 프론티어 감지/선정 파이프라인 (reachable 이후 DBSCAN + fallback)
-// =====================
+  
+// 2) 프론티어 감지/선정 
 
 auto frontiers = detectFrontiers(robot_g);
 
-// frontiers가 0이면 "종료"하지 말고 잠깐 대기 (맵 업데이트 타이밍)
+// frontiers가 0이면 "종료"하지 말고 잠깐 대기 (맵 업데이트 타이밍문제일수도 있기때문에)
 if (frontiers.empty()) {
   publishStop();
-  publishFrontierMarkers({}); // ✅ 잔상 제거(DELETE/lifetime 적용했다면 더 좋음)
   return;
 }
 
-// (A) 장애물 근접 프론티어 제거(기존 그대로)
+// (A) 장애물 근접 프론티어 제거
 int clearance_cells = (int)std::ceil(frontier_clearance_m_ / map_.info.resolution);
 frontiers.erase(
   std::remove_if(frontiers.begin(), frontiers.end(),
@@ -1292,17 +1256,28 @@ frontiers.erase(
 
 if (frontiers.empty()) {
   publishStop();
-  publishFrontierMarkers({});
-  RCLCPP_WARN(get_logger(), "no frontiers left after clearance");
+  RCLCPP_WARN(get_logger(), "no frontiers left");
   return;
 }
 
-// (B) ✅ reachable 먼저 계산해서, reachable인 프론티어만 남김
-// - 여기서 사용하는 마스크는 "blockedMask" 또는 "obsMaskInflated" 중 택1
-//   보통은 blockedMask(unknown+inflated+laser)면 너무 보수적이라,
-//   일단은 obsMaskInflated로 시작해보는 걸 추천 (unknown은 막지 않음 대신 frontier 자체가 traversable이라 unknown 안 밟음)
+auto obsReach = obsMaskInflated;
+  {
+    int W = (int)map_.info.width;
+    int keep = 2;
+    for (int dy=-keep; dy<=keep; ++dy) {
+        for (int dx=-keep; dx<=keep; ++dx) {
+        int nx = robot_g.x + dx;
+        int ny = robot_g.y + dy;
+        if (!inBounds(nx, ny)) continue;
+        obsReach[IDX(nx, ny, W)] = 0; 
+        }
+    }
+  }
+
+// reachable frontier 계산 (obstacle inflation mask이용!!)
 auto reachable = buildReachableMaskFromStart(robot_g, obsReach);
 filterFrontiersByReachable(frontiers, reachable);
+
 
 if (frontiers.empty()) {
   publishStop();
@@ -1311,7 +1286,7 @@ if (frontiers.empty()) {
   return;
 }
 
-// (C) ✅ reachable 된 프론티어만 가지고 DBSCAN → 대표점(reps) 생성
+// reachable 된 프론티어만 가지고 DBSCAN 대표점(reps) 생성
 std::vector<GridPose> reps;
 
 if (use_dbscan_) {
@@ -1326,17 +1301,17 @@ if (use_dbscan_) {
   reps = frontiers;
 }
 
-// (D) ✅ DBSCAN 실패/너무 빡세서 reps가 0이면 fallback (raw reachable frontiers 사용)
+// DBSCAN 실패/너무 빡세서 reps가 0이면 fallback (raw reachable frontiers 사용)
 if (reps.empty()) {
   RCLCPP_WARN(get_logger(), "DBSCAN reps=0 -> fallback to raw reachable frontiers (%zu)", frontiers.size());
   reps = frontiers;
 }
 
 
-// (E) 시각화는 reps로 찍는 게 보기 편함(원하면 frontiers도 따로 찍어도 됨)
+// 시각화
 publishFrontierMarkers(reps);
 
-// (F) reps 중에서 가장 좋은 goal 뽑아서 A*
+// reps 중에서 가장 좋은 goal 뽑아서 A*
 GridPose goal;
 std::vector<GridPose> new_path;
 
@@ -1346,7 +1321,7 @@ bool planned = pickNearestFrontier(robot_g, reps,
 
 if (!planned) {
   publishStop();
-  RCLCPP_WARN(get_logger(), "no plan (even after DBSCAN/fallback)");
+  RCLCPP_WARN(get_logger(), "no plan");
   return;
 }
 
@@ -1355,11 +1330,9 @@ wp_idx_ = 0;
 publishPathMarker(path_);
 followPathStep();
 
+RCLCPP_WARN(get_logger(), "plan: (%d, %d) -> (%d, %d)", robot_g.x, robot_g.y, goal.x, goal.y);
 
-
-  RCLCPP_WARN(get_logger(), "plan: (%d, %d) -> (%d, %d)", robot_g.x, robot_g.y, goal.x, goal.y);
-  }
-  
+}
 };
 
 int main(int argc, char **argv) {

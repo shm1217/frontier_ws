@@ -621,13 +621,13 @@
 
   
 //   std::vector<GridPose> astar(const GridPose &start, const GridPose &goal,
-//                              const std::vector<uint8_t> &blockedMask) const {
+//                              const std::vector<uint8_t> &obsMaskInflated) const {
 //     int W = (int)map_.info.width;
 //     int H = (int)map_.info.height;
 
 //     auto inside = [&](int x,int y){ return (0<=x && x<W && 0<=y && y<H); };
 //     if (!inside(start.x,start.y) || !inside(goal.x,goal.y)) return {};
-//     if (blockedMask[IDX(start.x,start.y,W)] || blockedMask[IDX(goal.x,goal.y,W)]) return {};
+//     if (obsMaskInflated[IDX(start.x,start.y,W)] || obsMaskInflated[IDX(goal.x,goal.y,W)]) return {};
 
 //     auto h = [&](int x,int y){ return std::abs(x-goal.x) + std::abs(y-goal.y); };
 
@@ -666,9 +666,20 @@
 //         if (!inside(nx,ny)) continue;
 
 //         int nid = IDX(nx,ny,W);
-//         if (blockedMask[nid]) continue;
+//         if (obsMaskInflated[nid]) continue;
 
-//         int ng = cur.g + 1;
+        //    bool diagonal = (dx8[k] != 0 && dy8[k] != 0);
+        //             int step_cost = diagonal ? 14 : 10;
+
+        //             // ✅ 코너 끼고 대각선 “모서리 통과” 방지 (중요!)
+        //             if (diagonal) {
+        //             int n1 = IDX(cur.x + dx8[k], cur.y, W);
+        //             int n2 = IDX(cur.x, cur.y + dy8[k], W);
+        //             if (obsMaskInflated[n1] || obsMaskInflated[n2]) continue;
+        //             }
+
+
+//         int ng = cur.g + step_cost;
 //         if (ng < gscore[nid]) {
 //           gscore[nid] = ng;
 //           came[nid] = id;
@@ -726,7 +737,7 @@
 //       // 목표가 blocked면 스킵(unknown/인플레/레이저)
 //       if (blockedMask[IDX(f.x,f.y,W)]) continue;
 
-//       auto p = astar(robot_g, f, blockedMask);
+//       auto p = astar(robot_g, f, obsMaskInflated);
 //       if (p.empty()) continue;
 
 //       if (pathTailTooCloseToRawObstacle(p, obsMaskRaw)) continue;
