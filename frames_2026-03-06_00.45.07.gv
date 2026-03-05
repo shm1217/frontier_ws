@@ -1,0 +1,14 @@
+digraph G {
+"tb3_0/map" -> "tb3_0/odom"[label=" Broadcaster: default_authority\nAverage rate: 5.2\nBuffer length: 5.0\nMost recent transform: 600.151\nOldest transform: 595.151\n"];
+"world" -> "tb3_0/map"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"tb3_0/base_footprint" -> "tb3_0/base_scan"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"tb3_0/odom" -> "tb3_0/base_footprint"[label=" Broadcaster: default_authority\nAverage rate: 29.712\nBuffer length: 3.332\nMost recent transform: 599.698\nOldest transform: 596.366\n"];
+"tb3_1/map" -> "tb3_1/odom"[label=" Broadcaster: default_authority\nAverage rate: 5.227\nBuffer length: 4.4\nMost recent transform: 600.151\nOldest transform: 595.751\n"];
+"world" -> "tb3_1/map"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"tb3_1/base_footprint" -> "tb3_1/base_scan"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"tb3_1/odom" -> "tb3_1/base_footprint"[label=" Broadcaster: default_authority\nAverage rate: 29.712\nBuffer length: 3.332\nMost recent transform: 599.698\nOldest transform: 596.366\n"];
+edge [style=invis];
+ subgraph cluster_legend { style=bold; color=black; label ="view_frames Result";
+"Recorded at time: 1772725507.8836977"[ shape=plaintext ] ;
+}->"world";
+}

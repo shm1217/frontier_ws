@@ -1,0 +1,50 @@
+frontier_explorer_astar:
+  ros__parameters:
+    obstacle_threshold: 70
+    free_threshold: 60
+    inflation_radius_m: 0.25
+    frontier_search_radius_m: 8.0
+
+    lookahead_m: 0.35
+    goal_tolerance_m: 0.35
+    max_lin_vel: 0.25
+    max_ang_vel: 0.90
+
+    map_topic: /map
+    cmd_topic: /cmd_vel
+    scan_topic: /scan
+
+    map_frame: map
+    base_frame: base_footprint
+    tf_timeout_s: 0.1
+
+    laser_inflation_radius_m: 0.12
+    laser_block_ttl: 1.0
+
+    frontier_clearance_m: 0.30
+    path_clearance_m: 0.12
+
+    infl_viz_radius_m: 3.0
+
+    stuck_time_s: 2.0
+    stuck_dist_m: 0.05
+
+    use_dbscan: true
+    dbscan_eps_m: 0.20
+    dbscan_min_pts: 6
+
+    warmup_enable: true
+    warmup_min_known_cells: 12000
+    warmup_min_occ_cells: 50
+    warmup_radius_m: 2.0
+    warmup_yaw_rate: 0.6
+    warmup_lin_vel: 0.0
+    warmup_max_time_s: 6.0
+
+    avoid_dist: 0.45
+    avoid_end_dist: 0.60
+
+    # marker topics (원하면 바꿔도 됨)
+    infl_marker_topic: /i
+    path_marker_topic: /p
+    frontier_marker_topic: /f
