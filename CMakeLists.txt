@@ -27,6 +27,13 @@ find_package(rclcpp_action REQUIRED)
 
 add_executable(frontier_multi
   src/frontier_multi.cpp
+  src/frontier_multi_main.cpp
+)
+
+# 헤더 파일 경로 포함 (include 폴더에 .hpp가 있는 경우)
+target_include_directories(frontier_multi PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  ${rclcpp_EXPORTED_TARGETS}
 )
 
 ament_target_dependencies(frontier_multi
@@ -49,11 +56,6 @@ install(DIRECTORY launch config lua
   DESTINATION share/${PROJECT_NAME}
 )
 
-
-install(PROGRAMS
-  scripts/cloud_merge_to_octomap.py
-  DESTINATION lib/${PROJECT_NAME}
-)
 
 
 ament_package()

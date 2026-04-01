@@ -1,0 +1,71 @@
+frontier_multi:  
+  ros__parameters:
+    # 토픽 및 프레임 설정
+    robot_id: "robot1"
+    map_topic: "map"
+    cmd_topic: "cmd_vel"
+    scan_topic: "scan"
+    map_frame: "map"
+    base_frame: "base_footprint"
+    global_frame: "world"
+    tf_timeout_s: 1.0
+
+    # 임계점 및 환경 설정
+    obstacle_threshold: 60
+    free_threshold: 50
+    inflation_radius_m: 0.20
+    frontier_search_radius_m: 8.0
+
+    has_scan_: false
+    avoiding_: false
+    progress_inited_: false
+    has_map_: false
+    has_goal: false 
+
+    # 제어 및 이동 (Navigation)
+    max_lin_vel: 0.18
+    max_ang_vel: 0.35
+    reach_dist_m: 0.25
+    avoid_enter_dist: 0.40
+    avoid_exit_dist: 0.55
+
+    # 안전성 (Clearance)
+    frontier_clearance_m: 0.15
+    path_clearance_m: 0.08
+    keep_open_cells: 2
+
+    # 알고리즘 (DBSCAN)
+    use_dbscan: true
+    dbscan_eps_m: 0.25
+    dbscan_min_pts: 10
+
+    # Laser Mask
+    laser_block_ttl: 1.0
+    laser_inflation_radius_m: 0.12
+
+    # Stuck 상황 감지
+    stuck_timeout_s: 5.0
+    stuck_min_move_m: 0.02
+
+    # 멀티 로봇 유틸리티 (Weights)
+    utility:
+      utility_radius_m: 1.00
+      info_gain_radius_m: 1.50
+      alpha_info_gain: 2.0
+      beta_path_len: 1.0
+      delta_reserve: 15.0
+      reserve_exclusion_radius_m: 2.0
+      reserve_ttl_s: 6.0
+
+    # 리플래닝 (Replan)
+    replan_check_period_s: 0.5
+    min_commit_time_s: 2.0
+    ig_drop_thresh: 0.10
+
+    # 시각화 (Visualization)
+    enable_viz: true
+    path_marker_topic: "path_marker"
+    frontier_marker_topic: "frontier_markers"
+    infl_marker_topic: "inflation_marker"
+    cluster_marker_topic: "cluster_marker"
+    reserve_out_topic: "/global_goal_reservation"

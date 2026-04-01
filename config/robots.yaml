@@ -1,13 +1,19 @@
 robots:
   - name: tb3_0
-    x: 5.12
-    y: 3.0
+    x: -0.978
+    y: 1.92
     z: 0.0
     yaw: 0.0
     enabled: true
   - name: tb3_1
-    x:  2.62
-    y:  4.94
+    x: 0.978
+    y: 1.92
+    z: 0.0
+    yaw: 0.0
+    enabled: true
+  - name: tb3_2
+    x: -0.978
+    y: -1.92
     z: 0.0
     yaw: 0.0
     enabled: true
