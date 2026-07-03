@@ -156,6 +156,9 @@ private:
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
+    GridPose blacklisted_goal_ = {-1, -1};
+    double blacklist_radius_m_ = 1.5;
+
     // ---------- Params / topics ----------
     std::string robot_id_;
     std::string map_topic_, cmd_topic_, scan_topic_;

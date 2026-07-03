@@ -27,8 +27,8 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     free_threshold_     = this->declare_parameter<int>("free_threshold", 50);
 
     // inflation 반경 및 로봇 주변 반경 frontier 추출
-    inflation_radius_m_       = this->declare_parameter<double>("inflation_radius_m", 0.20);
-    frontier_search_radius_m_ = this->declare_parameter<double>("frontier_search_radius_m", 8.0);
+    inflation_radius_m_       = this->declare_parameter<double>("inflation_radius_m", 0.25);
+    frontier_search_radius_m_ = this->declare_parameter<double>("frontier_search_radius_m", 6.0);
 
     // control value
     max_lin_vel_ = this->declare_parameter<double>("max_lin_vel", 0.18);
@@ -36,12 +36,12 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     reach_dist_  = this->declare_parameter<double>("reach_dist_m", 0.25);
 
     // 장애물 회피 시
-    avoid_enter_dist_ = this->declare_parameter<double>("avoid_enter_dist", 0.30);
-    avoid_exit_dist_  = this->declare_parameter<double>("avoid_exit_dist", 0.45);
+    avoid_enter_dist_ = this->declare_parameter<double>("avoid_enter_dist", 0.35);
+    avoid_exit_dist_  = this->declare_parameter<double>("avoid_exit_dist", 0.50);
 
     // frontier safety
-    frontier_clearance_m_ = this->declare_parameter<double>("frontier_clearance_m", 0.15);
-    path_clearance_m_     = this->declare_parameter<double>("path_clearance_m", 0.08);
+    frontier_clearance_m_ = this->declare_parameter<double>("frontier_clearance_m", 0.25);
+    path_clearance_m_     = this->declare_parameter<double>("path_clearance_m", 0.15);
 
     // 로봇 발 밑 주변 cell 열어주기
     keep_open_cells_ = this->declare_parameter<int>("keep_open_cells", 2);
@@ -56,8 +56,8 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     laser_inflation_radius_m_ = this->declare_parameter<double>("laser_inflation_radius_m", 0.12);
 
     // Stuck 됐을 때
-    stuck_timeout_s_ = this->declare_parameter<double>("stuck_timeout_s", 5.0);
-    stuck_min_move_m_ = this->declare_parameter<double>("stuck_min_move_m", 0.02);
+    stuck_timeout_s_ = this->declare_parameter<double>("stuck_timeout_s", 3.0);
+    stuck_min_move_m_ = this->declare_parameter<double>("stuck_min_move_m", 0.05);
 
     // Debug viz on/off (마커 퍼블리시는 유지)
     enable_viz_ = this->declare_parameter<bool>("enable_viz", true);
@@ -94,9 +94,12 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     auto map_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().durability_volatile();
     map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
       map_topic_, map_qos, std::bind(&FrontierExplorerMulti::onMap, this, std::placeholders::_1));
+    
+      auto scan_qos = rclcpp::QoS(rclcpp::KeepLast(10));
+      scan_qos.best_effort();
 
     scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
-      scan_topic_, 10, std::bind(&FrontierExplorerMulti::onScan, this, std::placeholders::_1));
+      scan_topic_, scan_qos, std::bind(&FrontierExplorerMulti::onScan, this, std::placeholders::_1));
 
     // Gate로 맵 델타 퍼블리시
     map_delta_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>(
@@ -1010,6 +1013,14 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     );
     if (d0 < min_goal_dist_m) continue;
 
+    // 블랙리스트 체크
+    if (blacklisted_goal_.x >= 0) {
+        double d_black = std::hypot(
+            (g.x - blacklisted_goal_.x) * map_.info.resolution,
+            (g.y - blacklisted_goal_.y) * map_.info.resolution);
+        if (d_black < blacklist_radius_m_) continue;
+    }
+
     //  A* 돌리기 전에 좌표 변환부터 먼저
     auto [wx, wy] = gridToWorld(g.x, g.y);
     double gx, gy;
@@ -1095,7 +1106,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
 
     // 2. 사방이 꽉 막힌 경우 -> 후진
     if (front < 0.3 && left < 0.3 && right < 0.3) {
-        cmd.linear.x = -0.03; // 천천히 후진
+        cmd.linear.x = -0.08; // 천천히 후진
         cmd.angular.z = 0.0;
         cmd_pub_->publish(cmd);
         return;
@@ -1224,16 +1235,12 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     double moved = std::hypot(robot_.x - last_progress_x_, robot_.y - last_progress_y_);
     
     if (moved > stuck_min_move_m_) {
-      // 움직였으면 시간과 위치 갱신
-      last_progress_time_ = this->now();
-      last_progress_x_ = robot_.x;
-      last_progress_y_ = robot_.y;
+      resetStuckCheck();
       return false;
-    } else {
-      // 못 움직이고 있다면 시간만 체크
-      double dt = (this->now() - last_progress_time_).seconds();
-      return (dt > stuck_timeout_s_);
-    }
+    } 
+    // 못 움직이고 있을 때만 시간 체크
+    double dt = (this->now() - last_progress_time_).seconds();
+    return (dt > stuck_timeout_s_);
   }
 
   void FrontierExplorerMulti::resetStuckCheck() {
@@ -1554,7 +1561,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
                   get_logger(),
                   "[%s] replanning...",
                   robot_id_.c_str());
-
+              blacklisted_goal_ = current_goal_;  // ← 추가
               path_.clear();
               wp_idx_ = 0;
 
@@ -1684,7 +1691,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
           get_logger(),
           "[%s] gate planning failed -> retry",
           robot_id_.c_str());
-
+      has_gate_goal_ = false;  // ← 이거 추가
       publishStop("gate retry");
 
       return;
@@ -1695,6 +1702,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     // =================================================
 
     auto frontiers = detectFrontiers(robot_g);
+    RCLCPP_WARN(get_logger(), "[%s] frontiers detected: %d", robot_id_.c_str(), (int)frontiers.size());
 
     if (frontiers.empty()) {
 
@@ -1703,9 +1711,9 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
         return;
     }
 
-    RCLCPP_WARN(
-            get_logger(),
-            "로컬 경로 추종 중");
+    // RCLCPP_WARN(
+    //         get_logger(),
+    //         "로컬 경로 추종 중");
 
     int clearance_cells =
         (int)std::ceil(
@@ -1724,6 +1732,8 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
                     clearance_cells);
             }),
         frontiers.end());
+     
+      RCLCPP_WARN(get_logger(), "[%s] after clearance: %d", robot_id_.c_str(), (int)frontiers.size());
 
     if (frontiers.empty()) {
 
@@ -1744,6 +1754,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     filterFrontiersByReachable(
         frontiers,
         reachable);
+        RCLCPP_WARN(get_logger(), "[%s] after reachable: %d", robot_id_.c_str(), (int)frontiers.size());
 
     if (frontiers.empty()) {
 

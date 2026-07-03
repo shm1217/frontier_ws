@@ -1,6 +1,20 @@
-# build artifacts
 build/
-log/
 install/
-*.pyc
+log/
+.colcon/
+
 __pycache__/
+*.pyc
+
+.vscode/
+.idea/
+
+*.db3
+*.mcap
+
+*.swp
+*.swo
+*~
+
+.DS_Store
+Thumbs.db

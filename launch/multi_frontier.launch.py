@@ -8,7 +8,7 @@ from launch.actions import DeclareLaunchArgument
 def generate_launch_description():
     ld = LaunchDescription()
 
-    use_sim_time = True
+    use_sim_time = False
     pkg_dir = get_package_share_directory('frontier_ws')
     param_file = os.path.join(pkg_dir, 'config', 'params.yaml')
 
@@ -57,9 +57,9 @@ def generate_launch_description():
                 '-configuration_basename', lua_file,
             ],
             remappings=[
-                ('scan', 'scan'),
-                ('odom', 'odom'),
-                ('imu', 'imu'),
+                ('scan', f'/{ns}/scan'),
+                ('odom', f'/{ns}/odom'),
+                ('imu', f'/{ns}/imu'),
             ]
         ))
 
@@ -86,10 +86,10 @@ def generate_launch_description():
     executable="static_transform_publisher",
     name="world_to_tb3_0_map",
     arguments=[
-        "-0.978", "1.92", "0",
-        "0", "0", "0",
-        "world",
-        "tb3_0/map",
+        "--x", "0.0", "--y", "0.0", "--z", "0",
+        "--yaw", "0", "--pitch", "0", "--roll", "0",
+        "--frame-id", "world",
+        "--child-frame-id", "tb3_0/map",
     ],
     ))
     ld.add_action(Node(
@@ -97,10 +97,10 @@ def generate_launch_description():
         executable="static_transform_publisher",
         name="world_to_tb3_1_map",
         arguments=[
-            "0.978", "1.92", "0",
-            "0", "0", "0",
-            "world",
-            "tb3_1/map",
+            "--x", "0.0", "--y", "1.0", "--z", "0",
+            "--yaw", "0", "--pitch", "0", "--roll", "0",
+            "--frame-id", "world",
+            "--child-frame-id", "tb3_1/map",
         ],
     ))
 
@@ -132,8 +132,8 @@ def generate_launch_description():
             parameters=[param_file, {
                 "use_sim_time": use_sim_time,
                 "robot_id": ns,
-                "map_topic": f"/{ns}/map",
-                "map_frame": f"{ns}/map",
+                "map_topic": "/merge_map",
+                "map_frame": "world",
                 "base_frame": f"{ns}/base_footprint",
                 "global_frame": "world"
             }],
