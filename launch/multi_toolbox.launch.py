@@ -3,7 +3,8 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import Node
-from launch.actions import TimerAction  # 추가
+from launch.actions import IncludeLaunchDescription, TimerAction  # 추가
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 
 def generate_launch_description():
@@ -177,8 +178,81 @@ def generate_launch_description():
                 "global_frame": "world",
             }],
         )
+    
+    def detect_node(ns: str):
+        return Node(
+        package= 'frontier_ws',
+        namespace= ns,
+        executable= 'detect_node',
+        output='screen',
+        parameters=[{
+            "use_sim_time": True,
+            "robot_id": ns,
+            "yolo_detections_topic": f"/{ns}/yolo/detections_3d",
+            "embedding_topic": f"/{ns}/embedding",
+            "image_topic": f"/{ns}/camera/camera/color/image_raw",
+            "camera_info_topic": f"/{ns}/camera/camera/color/camera_info",
+            "camera_link_frame": f"{ns}/camera_link",
+            "camera_init_frame": f"{ns}/camera_init",
+            "camera_optical_frame": f"{ns}/camera_color_optical_frame",
+        }] # True: /clock 사용, ros bag 사용할 때, False: system time 사용
+    )
+
+    def yolo_node(ns: str):
+        return IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(
+                    get_package_share_directory('yolo_bringup'),
+                    'launch',
+                    'yolo.launch.py'
+                )
+            ),
+            ## 실물에서
+            launch_arguments={
+                "use_3d": "True",
+                "input_image_topic": f"/{ns}/camera/camera/color/image_raw",
+                "target_frame": f"{ns}/camera_link",
+                "input_depth_topic": f"/{ns}/camera/camera/aligned_depth_to_color/image_raw",
+                "input_depth_info_topic": f"/{ns}/camera/camera/color/camera_info",
+                "use_sim_time":"true",
+                "namespace": f"{ns}/yolo", ## ?
+            }.items(),
+
+            # ## gazebo에서
+            # launch_arguments={
+            #     "use_3d": "True",
+            #     "input_image_topic": f"/{ns}/camera/camera/image_raw",
+            #     "target_frame": f"{ns}/camera_link",
+            #     "input_depth_topic": f"/{ns}/camera/camera/depth/image_raw",
+            #     "input_depth_info_topic": f"/{ns}/camera/camera/camera_info",
+            #     "use_sim_time":"true",
+            #     "depth_image_units_divisor": "1",
+            #     "namespace": f"{ns}/yolo",
+            # }.items(),
+        )
+    
+    def camera_node(ns: str):
+        return IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(
+                    get_package_share_directory('realsense2_camera'),
+                    'examples',
+                    'align_depth',
+                    'rs_align_depth_launch.py'
+                )
+            ),
+            launch_arguments={
+                # "camera_namespace": ns,
+                "camera_namespace": ns + "/camera",
+                "camera_name": "camera",
+            }.items()
+    )
 
     for r in robots:
-        ld.add_action(frontier_node(r["ns"]))
+        ns = r["ns"]
+        ld.add_action(frontier_node(ns))
+        # ld.add_action(detect_node(ns))
+        # ld.add_action(yolo_node(ns))
+        # ld.add_action(camera_node(ns))
 
     return ld

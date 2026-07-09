@@ -144,6 +144,15 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
           }
       );
 
+    obs_sub_ = 
+    this->create_subscription<frontier_ws::msg::DynamicObstacle>(
+        "/" + robot_id_ + "/obs_speed", 
+        10,std::bind(
+            &FrontierExplorerMulti::obsCallback,
+            this, 
+            std::placeholders::_1));
+    controller = std::make_shared<Controller>(this->get_clock());
+
     replan_check_period_s_ = this->declare_parameter<double>("replan_check_period_s", 0.5);
     min_commit_time_s_     = this->declare_parameter<double>("min_commit_time_s", 2.0);
     ig_drop_thresh_        = this->declare_parameter<double>("ig_drop_thresh", 0.10);
@@ -267,6 +276,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
 
   bool FrontierExplorerMulti::toGlobal(double x_local, double y_local, double& x_g, double& y_g) {
     geometry_msgs::msg::PoseStamped in;
+    
     in.header.stamp = this->now();
     in.header.frame_id = map_frame_;
     in.pose.position.x = x_local;
@@ -297,6 +307,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
       robot_.x = tf.transform.translation.x;
       robot_.y = tf.transform.translation.y;
       robot_.yaw = tf2::getYaw(tf.transform.rotation);
+
       has_pose_ = true;
       return true;
     } catch (const tf2::TransformException &ex) {
@@ -1180,53 +1191,25 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
 
     if (path_.empty()) return;
 
-    double side = std::min(minRange(0.7, 1.4), minRange(-1.4, -0.7)); // 좌/우 측면
-    double front = minRange(-0.3, 0.3);
 
     wp_idx_ = findNearestIndexOnPath(path_, wp_idx_, 25);
-    int target_idx = std::min(wp_idx_ + 3, (int)path_.size() - 1);
-
+    int target_idx = std::min(wp_idx_ + 7, (int)path_.size() - 1);
     const auto& target = path_[target_idx];
-    auto [tx, ty] = gridToWorld(target.x, target.y);
-
-    double dxw = tx - robot_.x;
-    double dyw = ty - robot_.y;
-
-    double dist = std::hypot(dxw, dyw);
-    double ang_err = normAngle(std::atan2(dyw, dxw) - robot_.yaw);
-
-    // RCLCPP_WARN_THROTTLE(get_logger(), *this->get_clock(), 500,
-    // "[%s] 경로 추종 중: 목표 지점 (%f, %f)", robot_id_.c_str(), tx, ty);
-
-    if (dist < reach_dist_) {
-      wp_idx_ = target_idx + 1;
-      if (wp_idx_ >= (int)path_.size()) 
-      {
-        RCLCPP_WARN(get_logger(), "[%s] clear path!", robot_id_.c_str()); 
-        path_.clear();
-        publishStop("path clear from path step");
-        return;
-      }
-    }
+    // auto [tx, ty] = gridToWorld(target.x, target.y); 
+    controller -> goal_update(gridToWorld(target.x, target.y));
 
     geometry_msgs::msg::Twist cmd;
-    if (std::abs(ang_err) > 0.6) {
-      cmd.linear.x  = 0.02;
-      cmd.angular.z = clampd(2.5 * ang_err, -max_ang_vel_, max_ang_vel_);
-    } else {
-      cmd.linear.x  = clampd(0.4 * dist, 0.03, max_lin_vel_);
-      cmd.angular.z = clampd(2.0 * ang_err, -max_ang_vel_, max_ang_vel_);
-    }
-
-    if (has_scan_) {
-      double k = clampd((side - 0.18) / (0.35 - 0.18), 0.0, 1.0); // 0~1
-      cmd.linear.x = std::max(cmd.linear.x * k, 0.05);
-    }
-
+    cmd = controller -> control_cmd_update();
+    // RCLCPP_INFO(this->get_logger(), " controller의 cmd: (%f, %f)", cmd.linear, cmd.angular);
     cmd_pub_->publish(cmd);
+
   }
 
-    bool FrontierExplorerMulti::isRobotStuck() {
+  void FrontierExplorerMulti::obsCallback(const frontier_ws::msg::DynamicObstacle::SharedPtr msg){
+    controller -> obs_update(msg);
+  }
+
+  bool FrontierExplorerMulti::isRobotStuck() {
     if (!progress_inited_) {
       resetStuckCheck();
       return false;
@@ -1490,6 +1473,8 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
         publishStop("no tf!");
         return;
     }
+
+    controller -> pose_update(robot_.x, robot_.y, robot_.yaw);
 
     publishMapDelta();
 

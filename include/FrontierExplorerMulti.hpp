@@ -31,6 +31,9 @@
 #include <unordered_set>
 #include <random>
 
+#include "frontier_ws/msg/dynamic_obstacle.hpp"
+#include "controller.hpp"
+
 static constexpr int UNKNOWN = -1;
 
 struct GridPose { int x{0}, y{0}; };
@@ -273,6 +276,12 @@ private:
 
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr explore_done_sub_;
     bool exploration_done_{false};
+
+    // controller
+    rclcpp::Subscription<frontier_ws::msg::DynamicObstacle>::SharedPtr obs_sub_;
+    std::shared_ptr<Controller> controller;
+    void obsCallback(const frontier_ws::msg::DynamicObstacle::SharedPtr msg);
+
 
 };
 
