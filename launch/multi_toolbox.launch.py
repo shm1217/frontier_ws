@@ -193,7 +193,7 @@ def generate_launch_description():
             "image_topic": f"/{ns}/camera/camera/color/image_raw",
             "camera_info_topic": f"/{ns}/camera/camera/color/camera_info",
             "camera_link_frame": f"{ns}/camera_link",
-            "camera_init_frame": f"{ns}/camera_init",
+            "obstacle_frame": "world",
             "camera_optical_frame": f"{ns}/camera_color_optical_frame",
         }] # True: /clock 사용, ros bag 사용할 때, False: system time 사용
     )
@@ -215,7 +215,7 @@ def generate_launch_description():
                 "input_depth_topic": f"/{ns}/camera/camera/aligned_depth_to_color/image_raw",
                 "input_depth_info_topic": f"/{ns}/camera/camera/color/camera_info",
                 "use_sim_time":"true",
-                "namespace": f"{ns}/yolo", ## ?
+                "namespace": f"{ns}/yolo", 
             }.items(),
 
             # ## gazebo에서
@@ -242,7 +242,6 @@ def generate_launch_description():
                 )
             ),
             launch_arguments={
-                # "camera_namespace": ns,
                 "camera_namespace": ns + "/camera",
                 "camera_name": "camera",
             }.items()

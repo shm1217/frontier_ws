@@ -228,6 +228,7 @@ private:
     std::string obs_speed_topic_;
     std::string camera_link_frame_;
     std::string camera_init_frame_;
+    std::string obstacle_frame_;
     std::string camera_optical_frame_;
     std::string camera_debug_frame_;
 

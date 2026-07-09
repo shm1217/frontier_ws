@@ -65,6 +65,8 @@ DetectNode::DetectNode() : Node("detect_node"), tf_buffer(this->get_clock()), tf
         "camera_link_frame", scoped_frame(robot_id_, "camera_link"));
     camera_init_frame_ = this->declare_parameter<std::string>(
         "camera_init_frame", scoped_frame(robot_id_, "camera_init"));
+    obstacle_frame_ = this->declare_parameter<std::string>(
+        "obstacle_frame", "world");
     camera_optical_frame_ = this->declare_parameter<std::string>(
         "camera_optical_frame", scoped_frame(robot_id_, "camera_color_optical_frame"));
     camera_debug_frame_ = this->declare_parameter<std::string>(
@@ -77,9 +79,9 @@ DetectNode::DetectNode() : Node("detect_node"), tf_buffer(this->get_clock()), tf
 
     // 실물 depth camera 사용 시
     sub_img = this->create_subscription<sensor_msgs::msg::Image>(
-        "image_topic_", rclcpp::SensorDataQoS(), std::bind(&DetectNode::img_callback, this, std::placeholders::_1));
+        image_topic_, rclcpp::SensorDataQoS(), std::bind(&DetectNode::img_callback, this, std::placeholders::_1));
     sub_camera = this->create_subscription<sensor_msgs::msg::CameraInfo>(
-        "camera_info_topic_", rclcpp::SensorDataQoS(), std::bind(&DetectNode::camera_callback, this, std::placeholders::_1));
+        camera_info_topic_, rclcpp::SensorDataQoS(), std::bind(&DetectNode::camera_callback, this, std::placeholders::_1));
 
     // gazebo 환경 시
     // sub_img = this->create_subscription<sensor_msgs::msg::Image>(
@@ -95,12 +97,13 @@ DetectNode::DetectNode() : Node("detect_node"), tf_buffer(this->get_clock()), tf
 
     RCLCPP_INFO(
         this->get_logger(),
-        "[%s] detect_node topics: yolo=%s image=%s camera_info=%s obs=%s",
+        "[%s] detect_node topics: yolo=%s image=%s camera_info=%s obs=%s obstacle_frame=%s",
         robot_id_.c_str(),
         yolo_detections_topic_.c_str(),
         image_topic_.c_str(),
         camera_info_topic_.c_str(),
-        obs_speed_topic_.c_str());
+        obs_speed_topic_.c_str(),
+        obstacle_frame_.c_str());
 
     timer = this->create_wall_timer(100ms, std::bind(&DetectNode::timer_callback, this));
 
@@ -189,7 +192,7 @@ void DetectNode::yolo_callback(const yolo_msgs::msg::DetectionArray::SharedPtr m
             p_in.header.stamp.nanosec = 0;
             p_in.point = pt3d;
 
-            p_out = tf_buffer.transform(p_in, camera_init_frame_);
+            p_out = tf_buffer.transform(p_in, obstacle_frame_);
             // try
             // {
             //     p_out = tf_buffer.transform(p_in, "camera_init");
@@ -290,7 +293,7 @@ bool DetectNode::project_pixel(const geometry_msgs::msg::Point &meter_pt, Eigen:
     if (!cam_ready)
         return false;
     geometry_msgs::msg::PointStamped p_in, p_out;
-    p_in.header.frame_id = camera_init_frame_;
+    p_in.header.frame_id = obstacle_frame_;
     // p_in.header.stamp = imgs->header.stamp;
     p_in.header.stamp.sec = 0;
     p_in.header.stamp.nanosec = 0;
@@ -1461,7 +1464,7 @@ void DetectNode::visualize_box(const obj &obj, const Eigen::Vector3d &box, const
 {
     visualization_msgs::msg::Marker marker;
     visualization_msgs::msg::MarkerArray arr;
-    marker.header.frame_id = camera_init_frame_;
+    marker.header.frame_id = obstacle_frame_;
     marker.header.stamp = rclcpp::Time(obj.stamp, RCL_ROS_TIME);
     marker.ns = ns;
     marker.id = id;
@@ -1484,7 +1487,7 @@ void DetectNode::visualize_box(const obj &obj, const Eigen::Vector3d &box, const
     std::string str = std::to_string(id);
 
     visualization_msgs::msg::Marker text;
-    text.header.frame_id = camera_init_frame_;
+    text.header.frame_id = obstacle_frame_;
     text.header.stamp = rclcpp::Time(obj.stamp, RCL_ROS_TIME);
     text.ns = ns;
     text.id = id + 10;
@@ -1510,7 +1513,7 @@ void DetectNode::visualize_box(const obj &obj, const Eigen::Vector3d &box, const
 void DetectNode::visualize_vel(const obj &obj, const vel &obj_vels, const std::array<float, 3> &color, const std::string &ns, int trac_id)
 {
     visualization_msgs::msg::Marker marker;
-    marker.header.frame_id = camera_init_frame_;
+    marker.header.frame_id = obstacle_frame_;
     marker.header.stamp = rclcpp::Time(obj.stamp, RCL_ROS_TIME);
     marker.ns = ns;
     marker.id = trac_id;
@@ -1550,7 +1553,7 @@ void DetectNode::visualize_vel(const obj &obj, const vel &obj_vels, const std::a
 void DetectNode::visualize_obj(const obj &obj, const std::array<float, 3> &color, const std::string &ns, int trac_id)
 {
     visualization_msgs::msg::Marker marker;
-    marker.header.frame_id = camera_init_frame_;
+    marker.header.frame_id = obstacle_frame_;
     marker.header.stamp = (obj.stamp);
     marker.ns = ns;
     marker.id = trac_id;
