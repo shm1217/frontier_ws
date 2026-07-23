@@ -249,9 +249,9 @@ def generate_launch_description():
 
     for r in robots:
         ns = r["ns"]
-        ld.add_action(frontier_node(ns))
+        # ld.add_action(frontier_node(ns))
         # ld.add_action(detect_node(ns))
         # ld.add_action(yolo_node(ns))
-        # ld.add_action(camera_node(ns))
+        ld.add_action(camera_node(ns))
 
     return ld

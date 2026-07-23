@@ -32,6 +32,7 @@ find_package(tf2_eigen REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(image_geometry REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/BboxImg.msg"
@@ -73,6 +74,7 @@ ament_target_dependencies(detect_node
   cv_bridge
   image_geometry
   OpenCV
+  ament_index_cpp
 )
 
 rosidl_target_interfaces(detect_node
@@ -108,6 +110,9 @@ install(DIRECTORY launch config lua
   DESTINATION share/${PROJECT_NAME}
 )
 
-
+install(
+  DIRECTORY appearance_file
+  DESTINATION share/${PROJECT_NAME}
+)
 
 ament_package()
