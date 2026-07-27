@@ -51,9 +51,9 @@ ControllerNode::ControllerNode() : Node("controller_node"), tf_buffer(this->get_
         "goal_pose_topic", scoped_topic(robot_id_, "goal_pose"));
 
     world_frame = this->declare_parameter<std::string>(
-        "world_frame", scoped_frame(robot_id_, "world"));
+        "world_frame", "world");
     base_link_frame = this->declare_parameter<std::string>(
-        "base_link_frame", scoped_topic(robot_id_, "base_link"));
+        "base_link_frame", scoped_frame(robot_id_, "base_link"));
 
 
     timer_tf = this->create_wall_timer(100ms, std::bind(&ControllerNode::timer_tf_callback, this));
