@@ -54,6 +54,8 @@ ControllerNode::ControllerNode() : Node("controller_node"), tf_buffer(this->get_
         "world_frame", "world");
     base_link_frame = this->declare_parameter<std::string>(
         "base_link_frame", scoped_frame(robot_id_, "base_link"));
+    map_frame = this->declare_parameter<std::string>(
+        "map_frame", scoped_frame(robot_id_, "map"));
 
 
     timer_tf = this->create_wall_timer(100ms, std::bind(&ControllerNode::timer_tf_callback, this));
@@ -156,11 +158,11 @@ void ControllerNode::timer_tf_callback()
     geometry_msgs::msg::TransformStamped t;
     try
     {
-        t = tf_buffer.lookupTransform(world_frame, base_link_frame, tf2::TimePointZero);
+        t = tf_buffer.lookupTransform(map_frame, base_link_frame, tf2::TimePointZero);
     }
     catch (const tf2::TransformException &ex)
     {
-        RCLCPP_INFO_ONCE(this->get_logger(), "Could not transform world to base_link");
+        RCLCPP_INFO_ONCE(this->get_logger(), "Could not transform map to base_link");
         return;
     }
 
