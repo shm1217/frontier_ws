@@ -85,6 +85,30 @@ target_include_directories(detect_node PUBLIC
   ${rclcpp_EXPORTED_TARGETS}
 )
 
+add_executable(controller_node
+        src/controller_node.cpp)
+ament_target_dependencies(controller_node
+  rclcpp
+  std_msgs
+  geometry_msgs
+  visualization_msgs
+  sensor_msgs
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+  yolo_msgs
+  tf2_eigen
+  ament_index_cpp
+)
+
+rosidl_target_interfaces(controller_node
+  ${PROJECT_NAME} "rosidl_typesupport_cpp")
+
+target_include_directories(controller_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  ${rclcpp_EXPORTED_TARGETS}
+)
+
 ament_target_dependencies(frontier_multi
   rclcpp
   rclcpp_action
@@ -103,6 +127,10 @@ install(TARGETS frontier_multi
 )
 
 install(TARGETS detect_node
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(TARGETS controller_node
   DESTINATION lib/${PROJECT_NAME}
 )
 

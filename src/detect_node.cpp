@@ -825,11 +825,11 @@ void DetectNode::tracking(std::vector<yolo_track> &track) // track을 id 포함�
         // 외형 cost 안 쓸때
         obj res;
         Eigen::Matrix3d s;
-        // calculate_Kalman(tr.cluster_X, tr.cluster_P, tr.prev, tr.curr, true, res, s); // res !=0 일 때만 visualize_box에서 res 사용하도록 하기
+        calculate_Kalman(tr.cluster_X, tr.cluster_P, tr.prev, tr.curr, true, res, s); // res !=0 일 때만 visualize_box에서 res 사용하도록 하기
         if (!kalman)
             continue;
         auto color = get_color(id);
-        // visualize_box(res, t.boxsize, color, id, "obj_box");
+        visualize_box(res, t.boxsize, color, id, "obj_box");
         frontier_ws::msg::DynamicObstacle obs;
         obs.track_id = id;
         obs.x = res.x_;
@@ -838,7 +838,7 @@ void DetectNode::tracking(std::vector<yolo_track> &track) // track을 id 포함�
         obs.vx = tr.cluster_X[3];
         obs.vy = tr.cluster_X[4];
         obs.vz = tr.cluster_X[5];
-        // obs_pub->publish(obs);
+        obs_pub->publish(obs);
     }
 }
 

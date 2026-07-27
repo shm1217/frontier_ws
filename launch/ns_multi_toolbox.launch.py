@@ -173,25 +173,18 @@ def launch_setup(context, *args, **kwargs):
         parameters=[{
             "use_sim_time": use_sim_time,
             "robot_id": ns,
-
             "yolo_detections_topic":
                 f"/{ns}/yolo/detections_3d",
-
             "embedding_topic":
                 f"/{ns}/embedding",
-
             "image_topic":
                 f"/{ns}/camera/camera/color/image_raw",
-
             "camera_info_topic":
                 f"/{ns}/camera/camera/color/camera_info",
-
             "camera_link_frame":
                 f"{ns}/camera_link",
-
             "obstacle_frame":
                 "world",
-
             "camera_optical_frame":
                 f"{ns}/camera_color_optical_frame",
         }],
@@ -217,25 +210,26 @@ def launch_setup(context, *args, **kwargs):
                 ),
                 launch_arguments={
                     "use_3d": "True",
-
                     "input_image_topic":
                         f"/{ns}/camera/camera/color/image_raw",
-
                     "target_frame":
                         f"{ns}/camera_link",
-
                     "input_depth_topic":
                         f"/{ns}/camera/camera/"
                         "aligned_depth_to_color/image_raw",
-
                     "input_depth_info_topic":
                         f"/{ns}/camera/camera/color/camera_info",
-
                     "use_sim_time":
                         str(use_sim_time).lower(),
-
                     "namespace":
                         f"{ns}/yolo",
+                    "use_tracking": "False",
+                    "use_debug": "False",
+                    "imgsz_height": "192",
+                    "imgsz_width": "320",
+                    "max_det": "10",
+                    "device": "cpu",
+                    "model": "yolov8n.pt",
                 }.items(),
             )
         ],
@@ -285,12 +279,37 @@ def launch_setup(context, *args, **kwargs):
     )
 
     # =========================================================
+    # 8) controller 노드 (실험용, 원래는 frontier_node 안에 있음)
+    # =========================================================
+    controller_node = Node(
+        package="frontier_ws",
+        executable="controller_node",
+        name="controller_node",
+        namespace=ns,
+        output="screen",
+        parameters=[{
+            "use_sim_time": use_sim_time,
+            "robot_id": ns,
+            "cmd_vel_topic":
+                f"/{ns}/cmd_vel",
+            "trajectory_topic":
+                f"/{ns}/trajectory",
+            "dy_obs_topic":
+                f"/{ns}/dy_obs",
+            "obs_speed_topic":
+                f"/{ns}/obs_speed",
+            "goal_pose_topic":
+                f"/{ns}/goal_pose",
+        }],
+    )
+
+    # =========================================================
     # 실행할 노드 선택
     # =========================================================
 
     actions.append(camera_node)
-    actions.append(frontier_node)
-    # actions.append(yolo_node)
+    # actions.append(frontier_node)
+    actions.append(yolo_node)
     actions.append(detect_node)
 
     return actions
