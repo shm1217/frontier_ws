@@ -63,7 +63,7 @@ private:
     double robot_radius = 0.2;
     double obstacle_radius = 0.2;
     double max_v = 0.2;
-    double max_w = 2.5;
+    double max_w = 1.8;
     double goal_tolerance = 0.2;
     double obstacle_timeout = 1.0;
     int num_control_sequences = 500; // 후보 개수
