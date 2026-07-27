@@ -25,15 +25,14 @@ std::string scoped_topic(const std::string &robot_id, const std::string &topic)
         return "/" + clean;
     }
     return "/" + robot_id + "/" + clean;
-
-    std::string scoped_frame(const std::string &robot_id, const std::string &frame)
+}
+std::string scoped_frame(const std::string &robot_id, const std::string &frame)
+{
+    if (robot_id.empty())
     {
-        if (robot_id.empty())
-        {
-            return frame;
-        }
-        return robot_id + "/" + frame;
+        return frame;
     }
+    return robot_id + "/" + frame;
 }
 } // namespace
 
