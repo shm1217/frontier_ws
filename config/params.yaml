@@ -51,8 +51,8 @@ frontier_multi:
     utility:
       utility_radius_m: 1.00
       info_gain_radius_m: 1.50
-      alpha_info_gain: 2.0
-      beta_path_len: 1.0
+      alpha_info_gain: 10
+      beta_path_len: 2.0
       delta_reserve: 15.0
       reserve_exclusion_radius_m: 2.0
       reserve_ttl_s: 6.0

@@ -10,18 +10,19 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 def generate_launch_description():
     ld = LaunchDescription()
 
-    use_sim_time = True
+    use_sim_time = False
+    use_sim_time_str = "False"
     pkg_dir = get_package_share_directory('frontier_ws')
     param_file = os.path.join(pkg_dir, 'config', 'params.yaml')
 
     robots = [
         {"ns": "tb3_0"},
-        {"ns": "tb3_1"},
+        # {"ns": "tb3_1"},
         # {"ns": "tb3_2"}
     ]
 
     # =========================================================
-    # 1) 로봇별 base -> scan static TF (카토그래퍼 때와 동일)
+    # 1) 로봇별 base -> scan static TF 
     # =========================================================
     for r in robots:
         ns = r["ns"]
@@ -53,7 +54,7 @@ def generate_launch_description():
             "base_frame":  f"{ns}/base_footprint",
             "scan_topic":  f"/{ns}/scan",
 
-            # 맵 해상도 (카토그래퍼와 동일하게 유지)
+            # 맵 해상도 
             "resolution": 0.05,
 
             # 레이저 범위
@@ -101,7 +102,7 @@ def generate_launch_description():
         ))
 
     # =========================================================
-    # 3) world -> tb3_x/map static TF (카토그래퍼 때와 동일)
+    # 3) world -> tb3_x/map static TF 
     # =========================================================
     ld.add_action(Node(
         package="tf2_ros",
@@ -126,37 +127,6 @@ def generate_launch_description():
         ],
     ))
 
-    # =========================================================
-    # 4) multirobot_map_merge (SLAM 뜨고 나서 시작)
-    # =========================================================
-    # ld.add_action(TimerAction(
-    #     period=7.0,
-    #     actions=[Node(
-    #         package='multirobot_map_merge',
-    #         executable='map_merge',
-    #         name='map_merge',
-    #         output='screen',
-    #         parameters=[{
-    #             'use_sim_time': use_sim_time,
-    #             'robot_namespace': 'tb3',
-    #             'merged_map_topic': 'merge_map',
-    #             'world_frame': 'world',
-    #             'known_init_poses': False,
-    #             'merging_rate': 2.0,
-    #             'discovery_rate': 0.05,
-    #             'expand_slam_maps_to_common_canvas': True,
-    #             'expand_slam_maps_apply_init_pose': True,
-    #             '/tb3_0/map_merge/init_pose_x': 0.0,
-    #             '/tb3_0/map_merge/init_pose_y': 0.0,
-    #             '/tb3_0/map_merge/init_pose_z': 0.0,
-    #             '/tb3_0/map_merge/init_pose_yaw': 0.0,
-    #             '/tb3_1/map_merge/init_pose_x': 1.0,
-    #             '/tb3_1/map_merge/init_pose_y': 1.0,
-    #             '/tb3_1/map_merge/init_pose_z': 0.0,
-    #             '/tb3_1/map_merge/init_pose_yaw': 0.0,
-    #         }],
-    #     )]
-    # ))
 
 
     # =========================================================
@@ -188,14 +158,14 @@ def generate_launch_description():
         executable= 'detect_node',
         output='screen',
         parameters=[{
-            "use_sim_time": True,
+            "use_sim_time": use_sim_time,
             "robot_id": ns,
             "yolo_detections_topic": f"/{ns}/yolo/detections_3d",
             "embedding_topic": f"/{ns}/embedding",
             "image_topic": f"/{ns}/camera/camera/color/image_raw",
             "camera_info_topic": f"/{ns}/camera/camera/color/camera_info",
             "camera_link_frame": f"{ns}/camera_link",
-            "obstacle_frame": "world",
+            "obstacle_frame": f"{ns}/map",
             "camera_optical_frame": f"{ns}/camera_color_optical_frame",
         }] # True: /clock 사용, ros bag 사용할 때, False: system time 사용
     )
@@ -216,8 +186,13 @@ def generate_launch_description():
                 "target_frame": f"{ns}/camera_link",
                 "input_depth_topic": f"/{ns}/camera/camera/aligned_depth_to_color/image_raw",
                 "input_depth_info_topic": f"/{ns}/camera/camera/color/camera_info",
-                "use_sim_time":"true",
+                "use_sim_time": use_sim_time_str,
                 "namespace": f"{ns}/yolo", 
+                "device": "cuda:0",
+
+                # "image_reliability": "1",        # 1: Reliable, 2: Best Effort
+                # "depth_image_reliability": "1",  # 1: Reliable, 2: Best Effort
+                # "depth_info_reliability": "1"    # 1: Reliable, 2: Best Effort
             }.items(),
 
             # ## gazebo에서
@@ -251,9 +226,9 @@ def generate_launch_description():
 
     for r in robots:
         ns = r["ns"]
-        ld.add_action(frontier_node(ns))
-        # ld.add_action(detect_node(ns))
-        # ld.add_action(yolo_node(ns))
+        #ld.add_action(frontier_node(ns))
+        ld.add_action(detect_node(ns))
+        ld.add_action(yolo_node(ns))
         # ld.add_action(camera_node(ns))
 
     return ld

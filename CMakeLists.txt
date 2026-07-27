@@ -104,7 +104,7 @@ install(TARGETS detect_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
-install(DIRECTORY launch config lua
+install(DIRECTORY launch config lua scripts
   DESTINATION share/${PROJECT_NAME}
 )
 

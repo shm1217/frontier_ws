@@ -66,8 +66,8 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     utility_radius_m_ = this->declare_parameter<double>("utility_radius_m", 1.00);
     info_gain_radius_m_ = this->declare_parameter<double>("info_gain_radius_m", 1.50);
 
-    alpha_ = this->declare_parameter<double>("alpha_info_gain", 2.0);
-    beta_  = this->declare_parameter<double>("beta_path_len", 1.0);
+    alpha_ = this->declare_parameter<double>("alpha_info_gain", 10);
+    beta_  = this->declare_parameter<double>("beta_path_len", 2.0);
     delta_ = this->declare_parameter<double>("delta_reserve", 15.0);
 
     reserve_exclusion_radius_m_ = this->declare_parameter<double>("reserve_exclusion_radius_m", 2.0);
@@ -1524,6 +1524,18 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     } else {
         has_map_ = false;
     }
+
+    RCLCPP_INFO_THROTTLE(
+        get_logger(),
+        *get_clock(),
+        3000,
+        "[%s] merge=%d local=%d using_local=%d frame=%s",
+        robot_id_.c_str(),
+        has_merge_map_,
+        has_local_map_,
+        using_local_map_,
+        map_frame_.c_str()
+    );
   }
 
   void FrontierExplorerMulti::addToBlacklist(const GridPose& g) {
