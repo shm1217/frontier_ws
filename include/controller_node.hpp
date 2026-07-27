@@ -48,9 +48,9 @@ private:
     double robot_yaw = 0.0;
     double robot_v = 0.0;
     double robot_w = 0.0;
-    double goal_x = 0.0;
+    double goal_x = 5.0;
     double goal_y = 0.0;
-    bool goal_update = false;
+    bool goal_update = true;
     bool pose_update = false;
 
     int obs_N = 20;   // 몇 번 예측할건지
@@ -98,6 +98,9 @@ private:
     std::string dy_obs_topic_;
     std::string obs_speed_topic_;
     std::string goal_pose_topic_;
+    std::string world_frame;
+    std::string base_link_frame;
+
 
     tf2_ros::Buffer tf_buffer;
     tf2_ros::TransformListener tf_listener;

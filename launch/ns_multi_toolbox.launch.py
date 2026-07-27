@@ -300,6 +300,10 @@ def launch_setup(context, *args, **kwargs):
                 f"/{ns}/obs_speed",
             "goal_pose_topic":
                 f"/{ns}/goal_pose",
+            "base_link_frame":
+                f"{ns}/base_link",
+            "world_frame":
+                "world",
         }],
     )
 
@@ -311,6 +315,7 @@ def launch_setup(context, *args, **kwargs):
     # actions.append(frontier_node)
     actions.append(yolo_node)
     actions.append(detect_node)
+    actions.append(controller_node)
 
     return actions
 

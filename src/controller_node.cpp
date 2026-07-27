@@ -25,6 +25,15 @@ std::string scoped_topic(const std::string &robot_id, const std::string &topic)
         return "/" + clean;
     }
     return "/" + robot_id + "/" + clean;
+
+    std::string scoped_frame(const std::string &robot_id, const std::string &frame)
+    {
+        if (robot_id.empty())
+        {
+            return frame;
+        }
+        return robot_id + "/" + frame;
+    }
 }
 } // namespace
 
@@ -41,6 +50,11 @@ ControllerNode::ControllerNode() : Node("controller_node"), tf_buffer(this->get_
         "obs_speed_topic", scoped_topic(robot_id_, "obs_speed"));
     goal_pose_topic_ = this->declare_parameter<std::string>(
         "goal_pose_topic", scoped_topic(robot_id_, "goal_pose"));
+
+    world_frame = this->declare_parameter<std::string>(
+        "world_frame", scoped_frame(robot_id_, "world"));
+    base_link_frame = this->declare_parameter<std::string>(
+        "base_link_frame", scoped_topic(robot_id_, "base_link"));
 
 
     timer_tf = this->create_wall_timer(100ms, std::bind(&ControllerNode::timer_tf_callback, this));
@@ -143,11 +157,11 @@ void ControllerNode::timer_tf_callback()
     geometry_msgs::msg::TransformStamped t;
     try
     {
-        t = tf_buffer.lookupTransform("camera_init", "base_scan", tf2::TimePointZero);
+        t = tf_buffer.lookupTransform(world_frame, base_link_frame, tf2::TimePointZero);
     }
     catch (const tf2::TransformException &ex)
     {
-        RCLCPP_INFO_ONCE(this->get_logger(), "Could not transform camera_init to base_scan");
+        RCLCPP_INFO_ONCE(this->get_logger(), "Could not transform world to base_link");
         return;
     }
 
