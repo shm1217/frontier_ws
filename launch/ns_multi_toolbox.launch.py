@@ -302,6 +302,8 @@ def launch_setup(context, *args, **kwargs):
                 f"/{ns}/goal_pose",
             "base_link_frame":
                 f"{ns}/base_link",
+            "map_frame":
+                f"{ns}/map",
             "world_frame":
                 "world",
         }],
