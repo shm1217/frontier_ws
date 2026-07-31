@@ -118,10 +118,10 @@ def launch_setup(context, *args, **kwargs):
             output="screen",
             parameters=[slam_params],
             remappings=[
-                ("scan", f"/{ns}/scan"),
-                ("odom", f"/{ns}/odom"),
-                ("map", f"/{ns}/map"),
-                ("map_metadata", f"/{ns}/map_metadata"),
+                ("/scan", f"/{ns}/scan"),
+                ("/odom", f"/{ns}/odom"),
+                ("/map", f"/{ns}/map"),
+                ("/map_metadata", f"/{ns}/map_metadata"),
             ],
         )
     )
@@ -328,6 +328,13 @@ def launch_setup(context, *args, **kwargs):
 
                     "namespace":
                         f"{ns}/yolo",
+                    "use_tracking": "False",
+                    "use_debug": "False",
+                    "imgsz_height": "192",
+                    "imgsz_width": "320",
+                    "max_det": "10",
+                    "device": "cpu",
+                    "model": "yolov8n.pt",
                 }.items(),
             )
         ],

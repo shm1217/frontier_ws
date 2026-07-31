@@ -33,6 +33,7 @@
   <exec_depend>tf2_sensor_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>sensor_msgs_py</exec_depend>
+  <exec_depend>gazebo_msgs</exec_depend>
   <exec_depend>octomap_server</exec_depend>
 
   <buildtool_depend>rosidl_default_generators</buildtool_depend>

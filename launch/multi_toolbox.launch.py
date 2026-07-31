@@ -17,7 +17,7 @@ def generate_launch_description():
 
     robots = [
         {"ns": "tb3_0"},
-        # {"ns": "tb3_1"},
+        {"ns": "tb3_1"},
         # {"ns": "tb3_2"}
     ]
 
@@ -104,28 +104,28 @@ def generate_launch_description():
     # =========================================================
     # 3) world -> tb3_x/map static TF 
     # =========================================================
-    ld.add_action(Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        name="world_to_tb3_0_map",
-        arguments=[
-            "--x", "0.0", "--y", "0.0", "--z", "0",
-            "--yaw", "0", "--pitch", "0", "--roll", "0",
-            "--frame-id", "world",
-            "--child-frame-id", "tb3_0/map",
-        ],
-    ))
-    ld.add_action(Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        name="world_to_tb3_1_map",
-        arguments=[
-            "--x", "0.0", "--y", "0.0", "--z", "0",
-            "--yaw", "0", "--pitch", "0", "--roll", "0",
-            "--frame-id", "world",
-            "--child-frame-id", "tb3_1/map",
-        ],
-    ))
+    # ld.add_action(Node(
+    #     package="tf2_ros",
+    #     executable="static_transform_publisher",
+    #     name="world_to_tb3_0_map",
+    #     arguments=[
+    #         "--x", "0.0", "--y", "0.0", "--z", "0",
+    #         "--yaw", "0", "--pitch", "0", "--roll", "0",
+    #         "--frame-id", "world",
+    #         "--child-frame-id", "tb3_0/map",
+    #     ],
+    # ))
+    # ld.add_action(Node(
+    #     package="tf2_ros",
+    #     executable="static_transform_publisher",
+    #     name="world_to_tb3_1_map",
+    #     arguments=[
+    #         "--x", "0.0", "--y", "0.0", "--z", "0",
+    #         "--yaw", "0", "--pitch", "0", "--roll", "0",
+    #         "--frame-id", "world",
+    #         "--child-frame-id", "tb3_1/map",
+    #     ],
+    # ))
 
 
 
@@ -135,8 +135,10 @@ def generate_launch_description():
     def frontier_node(ns: str):
         return Node(
             package="frontier_ws",
-            executable="frontier_multi",
-            name="frontier_multi",
+            # executable="frontier_multi", 
+            # name="frontier_multi",
+            executable="frontier_multi_uwb", 
+            name="frontier_multi_uwb",
             namespace=ns,
             output="screen",
             parameters=[param_file, {
@@ -226,9 +228,9 @@ def generate_launch_description():
 
     for r in robots:
         ns = r["ns"]
-        #ld.add_action(frontier_node(ns))
-        ld.add_action(detect_node(ns))
-        ld.add_action(yolo_node(ns))
+        ld.add_action(frontier_node(ns))
+        # ld.add_action(detect_node(ns))
+        # ld.add_action(yolo_node(ns))
         # ld.add_action(camera_node(ns))
 
     return ld

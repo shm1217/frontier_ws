@@ -51,8 +51,23 @@ add_executable(frontier_multi
 rosidl_target_interfaces(frontier_multi
   ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
+# Feature/UWB map merging variant. The original frontier_multi target is kept
+# unchanged so both exploration modes can be selected from launch files.
+add_executable(frontier_multi_uwb
+  src/frontier_multi_uwb.cpp
+  src/controller.cpp
+)
+
+rosidl_target_interfaces(frontier_multi_uwb
+  ${PROJECT_NAME} "rosidl_typesupport_cpp")
+
 # 헤더 파일 경로 포함 (include 폴더에 .hpp가 있는 경우)
 target_include_directories(frontier_multi PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  ${rclcpp_EXPORTED_TARGETS}
+)
+
+target_include_directories(frontier_multi_uwb PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   ${rclcpp_EXPORTED_TARGETS}
 )
@@ -95,8 +110,20 @@ ament_target_dependencies(frontier_multi
   nav2_msgs
 )
 
+ament_target_dependencies(frontier_multi_uwb
+  rclcpp
+  rclcpp_action
+  nav_msgs
+  geometry_msgs
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+  visualization_msgs
+  nav2_msgs
+)
 
-install(TARGETS frontier_multi
+
+install(TARGETS frontier_multi frontier_multi_uwb
   DESTINATION lib/${PROJECT_NAME}
 )
 
