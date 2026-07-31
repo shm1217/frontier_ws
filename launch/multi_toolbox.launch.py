@@ -5,6 +5,8 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 from launch.actions import IncludeLaunchDescription, TimerAction  # 추가
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch_ros.descriptions import ParameterFile
+from nav2_common.launch import RewrittenYaml
 
 
 def generate_launch_description():
@@ -14,10 +16,11 @@ def generate_launch_description():
     use_sim_time_str = "False"
     pkg_dir = get_package_share_directory('frontier_ws')
     param_file = os.path.join(pkg_dir, 'config', 'params.yaml')
+    dwb_param_file = os.path.join(pkg_dir, 'config', 'dwb_controller.yaml')
 
     robots = [
         {"ns": "tb3_0"},
-        # {"ns": "tb3_1"},
+        {"ns": "tb3_1"},
         # {"ns": "tb3_2"}
     ]
 
@@ -150,6 +153,41 @@ def generate_launch_description():
                 "local_map_topic": "map",   # 명시적으로 남겨두면 나중에 헷갈릴 일 없음
             }],
         )
+
+    def dwb_nodes(ns: str):
+        # RewrittenYaml makes each controller/costmap instance private to its robot namespace.
+        configured_params = ParameterFile(
+            RewrittenYaml(
+                source_file=dwb_param_file,
+                root_key=ns,
+                param_rewrites={
+                    'use_sim_time': use_sim_time_str,
+                    'local_costmap.local_costmap.ros__parameters.robot_base_frame': f'{ns}/base_footprint',
+                    'local_costmap.local_costmap.ros__parameters.obstacle_layer.scan.topic': f'/{ns}/scan',
+                },
+                convert_types=True),
+            allow_substs=True)
+        return [
+            Node(
+                package='nav2_controller',
+                executable='controller_server',
+                name='controller_server',
+                namespace=ns,
+                output='screen',
+                parameters=[configured_params],
+                remappings=[('cmd_vel', 'cmd_vel_dwb')]),
+            Node(
+                package='nav2_lifecycle_manager',
+                executable='lifecycle_manager',
+                name='lifecycle_manager_controller',
+                namespace=ns,
+                output='screen',
+                parameters=[{
+                    'use_sim_time': use_sim_time,
+                    'autostart': True,
+                    'node_names': ['controller_server'],
+                }]),
+        ]
     
     def detect_node(ns: str):
         return Node(
@@ -165,7 +203,7 @@ def generate_launch_description():
             "image_topic": f"/{ns}/camera/camera/color/image_raw",
             "camera_info_topic": f"/{ns}/camera/camera/color/camera_info",
             "camera_link_frame": f"{ns}/camera_link",
-            "obstacle_frame": f"{ns}/map",
+            "obstacle_frame": "world",
             "camera_optical_frame": f"{ns}/camera_color_optical_frame",
         }] # True: /clock 사용, ros bag 사용할 때, False: system time 사용
     )
@@ -226,7 +264,9 @@ def generate_launch_description():
 
     for r in robots:
         ns = r["ns"]
-        #ld.add_action(frontier_node(ns))
+        for node in dwb_nodes(ns):
+            ld.add_action(node)
+        ld.add_action(frontier_node(ns))
         ld.add_action(detect_node(ns))
         ld.add_action(yolo_node(ns))
         # ld.add_action(camera_node(ns))
