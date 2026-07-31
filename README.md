@@ -1,4 +1,2 @@
-###### TODO 
-
-1. 터틀봇에 depthcamera 연결 후 프레임 연결 확인
-2. detect_node.cpp에서 /camera_init -> world로 변경
+터틀봇 터미널에 sbt 입력 후 실험 진행
+알고리즘이 더 정확한지 확인하기 위해 실험하는 거라 home에 새 패키지를 추가하여 클론하였음
