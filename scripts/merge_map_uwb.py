@@ -48,8 +48,46 @@ class MergeMapUwb(Node):
             "max_anchor_match_error_m", 0.60).value)
         self.min_feature_matches = int(self.declare_parameter(
             "min_feature_matches", 5).value)
+        self.max_features = int(self.declare_parameter(
+            "max_features", 2500).value)
+        self.orb_fast_threshold = int(self.declare_parameter(
+            "orb_fast_threshold", 5).value)
+        self.orb_edge_threshold = int(self.declare_parameter(
+            "orb_edge_threshold", 8).value)
+        self.orb_patch_size = int(self.declare_parameter(
+            "orb_patch_size", 31).value)
+        self.feature_ratio = float(self.declare_parameter(
+            "feature_ratio", 0.78).value)
+        self.ransac_batches = int(self.declare_parameter(
+            "ransac_batches", 60).value)
+        self.ransac_threshold = float(self.declare_parameter(
+            "ransac_threshold_m", 0.20).value)
+        self.min_ransac_inliers = int(self.declare_parameter(
+            "min_ransac_inliers", 4).value)
+        self.min_ransac_inlier_ratio = float(self.declare_parameter(
+            "min_ransac_inlier_ratio", 0.30).value)
+        self.min_scale = float(self.declare_parameter("min_scale", 0.95).value)
+        self.max_scale = float(self.declare_parameter("max_scale", 1.05).value)
+        self.dedup_yaw = math.radians(float(self.declare_parameter(
+            "dedup_yaw_deg", 2.0).value))
+        self.dedup_translation = float(self.declare_parameter(
+            "dedup_translation_m", 0.20).value)
         self.min_overlap_score = float(self.declare_parameter(
-            "min_overlap_score", 0.25).value)
+            "min_overlap_score", 0.2).value)
+        self.wall_tolerance = float(self.declare_parameter(
+            "wall_tolerance_m", 0.10).value)
+        self.refine_translation = float(self.declare_parameter(
+            "refine_translation_m", 0.30).value)
+        self.refine_translation_step = float(self.declare_parameter(
+            "refine_translation_step_m", 0.10).value)
+        self.refine_yaw = float(self.declare_parameter(
+            "refine_yaw_deg", 3.0).value)
+        self.refine_yaw_step = float(self.declare_parameter(
+            "refine_yaw_step_deg", 1.0).value)
+        self.refine_fine_translation_step = float(self.declare_parameter(
+            "refine_fine_translation_step_m", 0.025).value)
+        self.refine_fine_yaw_step = float(self.declare_parameter(
+            "refine_fine_yaw_step_deg", 0.25).value)
         self.feature_weight = float(self.declare_parameter(
             "feature_weight", 1.0).value)
         self.anchor_weight = float(self.declare_parameter(
@@ -149,8 +187,10 @@ class MergeMapUwb(Node):
     @staticmethod
     def map_image(msg):
         data = np.asarray(msg.data, dtype=np.int16).reshape(msg.info.height, msg.info.width)
-        image = np.full(data.shape, 127, dtype=np.uint8)
-        image[data <= 40] = 255
+        # Use only physical occupied structure for ORB.  Free and unknown are
+        # the same background here so exploration frontiers cannot become
+        # artificial features.  Their distinction remains in OccupancyGrid.
+        image = np.full(data.shape, 255, dtype=np.uint8)
         image[data >= 60] = 0
         return image
 
@@ -163,7 +203,11 @@ class MergeMapUwb(Node):
         return out
 
     def feature_candidates(self, ref, mov):
-        orb = cv2.ORB_create(nfeatures=1800, fastThreshold=8)
+        orb = cv2.ORB_create(
+            nfeatures=self.max_features,
+            fastThreshold=self.orb_fast_threshold,
+            edgeThreshold=self.orb_edge_threshold,
+            patchSize=self.orb_patch_size)
         kp1, des1 = orb.detectAndCompute(self.map_image(ref), None)
         kp2, des2 = orb.detectAndCompute(self.map_image(mov), None)
         if des1 is None or des2 is None:
@@ -176,7 +220,7 @@ class MergeMapUwb(Node):
             if len(pair) < 2:
                 continue
             first, second = pair[0], pair[1]
-            if first.distance < 0.78 * second.distance:
+            if first.distance < self.feature_ratio * second.distance:
                 matches.append(first)
         if len(matches) < self.min_feature_matches:
             return []
@@ -188,22 +232,29 @@ class MergeMapUwb(Node):
         candidates = []
         rng = np.random.default_rng(7)
         batches = [np.arange(len(matches))]
-        for _ in range(30):
+        for _ in range(self.ransac_batches):
             size = min(len(matches), max(6, len(matches) // 2))
             batches.append(rng.choice(len(matches), size=size, replace=False))
         for idx in batches:
             M, inliers = cv2.estimateAffinePartial2D(
                 src[idx], dst[idx], method=cv2.RANSAC,
-                ransacReprojThreshold=0.20, maxIters=2000, confidence=0.995)
-            if M is None:
+                ransacReprojThreshold=self.ransac_threshold,
+                maxIters=3000, confidence=0.995)
+            if M is None or inliers is None:
+                continue
+            inlier_count = int(inliers.sum())
+            inlier_ratio = inlier_count / max(1, len(idx))
+            if inlier_count < self.min_ransac_inliers:
+                continue
+            if inlier_ratio < self.min_ransac_inlier_ratio:
                 continue
             scale = math.hypot(M[0, 0], M[1, 0])
-            if not 0.95 <= scale <= 1.05:
+            if not self.min_scale <= scale <= self.max_scale:
                 continue
             yaw = math.atan2(M[1, 0], M[0, 0])
             candidate = (float(M[0, 2]), float(M[1, 2]), yaw)
-            if all(abs(math.atan2(math.sin(yaw-c[2]), math.cos(yaw-c[2]))) > math.radians(2)
-                   or math.hypot(candidate[0]-c[0], candidate[1]-c[1]) > 0.20
+            if all(abs(math.atan2(math.sin(yaw-c[2]), math.cos(yaw-c[2]))) > self.dedup_yaw
+                   or math.hypot(candidate[0]-c[0], candidate[1]-c[1]) > self.dedup_translation
                    for c in candidates):
                 candidates.append(candidate)
         return candidates
@@ -215,7 +266,20 @@ class MergeMapUwb(Node):
         return np.array([c * point[0] - s * point[1] + tx,
                          s * point[0] + c * point[1] + ty])
 
-    def overlap_score(self, ref, mov, transform):
+    def make_overlap_context(self, ref):
+        ref_data = np.asarray(ref.data, dtype=np.int16).reshape(
+            ref.info.height, ref.info.width)
+        non_wall = (ref_data < 60).astype(np.uint8)
+        return {
+            "data": ref_data,
+            "wall_distance_px": cv2.distanceTransform(
+                non_wall, cv2.DIST_L2, 5),
+            "wall_tolerance_px": self.wall_tolerance / ref.info.resolution,
+        }
+
+    def overlap_score(self, ref, mov, transform, context=None):
+        if context is None:
+            context = self.make_overlap_context(ref)
         mov_data = np.asarray(mov.data, dtype=np.int16).reshape(mov.info.height, mov.info.width)
         ys, xs = np.where(mov_data >= 60)
         if len(xs) == 0:
@@ -231,15 +295,48 @@ class MergeMapUwb(Node):
         gy = np.floor((ry - ref.info.origin.position.y) / ref.info.resolution).astype(int)
         inside = (gx >= 0) & (gy >= 0) & (gx < ref.info.width) & (gy < ref.info.height)
         if inside.sum() < 20:
-            return 0.0
-        ref_data = np.asarray(ref.data, dtype=np.int16).reshape(ref.info.height, ref.info.width)
-        values = ref_data[gy[inside], gx[inside]]
-        known = values >= 0
-        if known.sum() < 20:
-            return 0.0
-        occupied_agree = np.count_nonzero(values[known] >= 60)
-        free_conflict = np.count_nonzero(values[known] <= 40)
-        return float((occupied_agree - free_conflict) / known.sum())
+            return -1.0
+        values = context["data"][gy[inside], gx[inside]]
+        distances = context["wall_distance_px"][gy[inside], gx[inside]]
+        agree = distances <= context["wall_tolerance_px"]
+        conflict = (values >= 0) & (values <= 40) & ~agree
+        agree_count = int(np.count_nonzero(agree))
+        conflict_count = int(np.count_nonzero(conflict))
+        known_count = agree_count + conflict_count
+        if known_count < 20:
+            return -1.0
+        return float((agree_count - conflict_count) / known_count)
+
+    def refine_candidate(self, ref, mov, transform, context):
+        best_score = self.overlap_score(ref, mov, transform, context)
+        best_transform = transform
+        stages = (
+            (self.refine_translation, self.refine_translation_step,
+             self.refine_yaw, self.refine_yaw_step),
+            (self.refine_translation_step, self.refine_fine_translation_step,
+             self.refine_yaw_step, self.refine_fine_yaw_step),
+        )
+        center = transform
+        for translation_radius, translation_step, yaw_radius, yaw_step in stages:
+            translation_offsets = np.arange(
+                -translation_radius,
+                translation_radius + 0.5 * translation_step,
+                translation_step)
+            yaw_offsets = np.deg2rad(np.arange(
+                -yaw_radius, yaw_radius + 0.5 * yaw_step, yaw_step))
+            stage_score, stage_transform = best_score, best_transform
+            for dx in translation_offsets:
+                for dy in translation_offsets:
+                    for dyaw in yaw_offsets:
+                        candidate = (
+                            center[0] + float(dx), center[1] + float(dy),
+                            center[2] + float(dyaw))
+                        score = self.overlap_score(ref, mov, candidate, context)
+                        if score > stage_score:
+                            stage_score, stage_transform = score, candidate
+            best_score, best_transform = stage_score, stage_transform
+            center = best_transform
+        return best_transform, best_score
 
     def select_transform(self, ref_ns, mov_ns):
         ref, mov = self.maps[ref_ns], self.maps[mov_ns]
@@ -247,9 +344,11 @@ class MergeMapUwb(Node):
         if not candidates:
             return None
         a_ref, a_mov = self.anchors[ref_ns][0], self.anchors[mov_ns][0]
+        overlap_context = self.make_overlap_context(ref)
         best = None
-        for transform in candidates:
-            overlap = self.overlap_score(ref, mov, transform)
+        for raw_transform in candidates:
+            transform, overlap = self.refine_candidate(
+                ref, mov, raw_transform, overlap_context)
             anchor_error = float(np.linalg.norm(
                 self.transform_point(transform, a_mov) - a_ref))
             total = self.feature_weight * overlap - self.anchor_weight * anchor_error
