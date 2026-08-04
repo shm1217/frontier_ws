@@ -39,7 +39,7 @@ ros2 launch frontier_ws merge_map_uwb.launch.py
 + featuer만 사용해 맵 머징
   ```bash
   python3 scripts/offline_merge_map_uwb.py \
- <파일 이름>.yaml \
+  <파일 이름>.yaml \
   <파일 이름>.yaml
   ```
   
