@@ -29,16 +29,16 @@ def generate_launch_description():
             "tb3_0_serial_port", default_value="/dev/ttyUSB_tb3_0"),
         DeclareLaunchArgument(
             "tb3_1_serial_port", default_value="/dev/ttyUSB_tb3_1"),
-        DeclareLaunchArgument("anchor_x", default_value="-3.0"),
-        DeclareLaunchArgument("anchor_y", default_value="5.0"),
+        DeclareLaunchArgument("anchor_x", default_value="-6.0"),
+        DeclareLaunchArgument("anchor_y", default_value="0.0"),
         DeclareLaunchArgument("publish_rate_hz", default_value="10.0"),
         DeclareLaunchArgument("noise_stddev_m", default_value="0.0"),
         DeclareLaunchArgument(
             "model_states_topic", default_value="/gazebo/model_states"),
         DeclareLaunchArgument(
-            "initial_world_x", default_value="[-1.0,-6.0]"), ## 시뮬레이션 상에서 uwb 센서 재현하기 위해 
+            "initial_world_x", default_value="[0.0,0.0]"), ## 시뮬레이션 상에서 uwb 센서 재현하기 위해 
         DeclareLaunchArgument(
-            "initial_world_y", default_value="[4.0,2.0]"),
+            "initial_world_y", default_value="[0.0,0.0]"),
         DeclareLaunchArgument(
             "initial_world_yaw", default_value="[0.0,0.0]"),
 
@@ -65,23 +65,23 @@ def generate_launch_description():
         # ),
 
         ## 시뮬레이션
-        ExecuteProcess(
-            cmd=[
-                "python3",
-                mock_ranger,
-                "--ros-args",
-                "-p", ["robot_namespaces:=", robots],
-                "-p", ["anchor_x:=", LaunchConfiguration("anchor_x")],
-                "-p", ["anchor_y:=", LaunchConfiguration("anchor_y")],
-                "-p", ["publish_rate_hz:=", LaunchConfiguration("publish_rate_hz")],
-                "-p", ["noise_stddev_m:=", LaunchConfiguration("noise_stddev_m")],
-                "-p", ["model_states_topic:=", LaunchConfiguration("model_states_topic")],
-                "-p", ["initial_world_x:=", LaunchConfiguration("initial_world_x")],
-                "-p", ["initial_world_y:=", LaunchConfiguration("initial_world_y")],
-                "-p", ["initial_world_yaw:=", LaunchConfiguration("initial_world_yaw")],
-            ],
-            output="screen",
-        ),
+        # ExecuteProcess(
+        #     cmd=[
+        #         "python3",
+        #         mock_ranger,
+        #         "--ros-args",
+        #         "-p", ["robot_namespaces:=", robots],
+        #         "-p", ["anchor_x:=", LaunchConfiguration("anchor_x")],
+        #         "-p", ["anchor_y:=", LaunchConfiguration("anchor_y")],
+        #         "-p", ["publish_rate_hz:=", LaunchConfiguration("publish_rate_hz")],
+        #         "-p", ["noise_stddev_m:=", LaunchConfiguration("noise_stddev_m")],
+        #         "-p", ["model_states_topic:=", LaunchConfiguration("model_states_topic")],
+        #         "-p", ["initial_world_x:=", LaunchConfiguration("initial_world_x")],
+        #         "-p", ["initial_world_y:=", LaunchConfiguration("initial_world_y")],
+        #         "-p", ["initial_world_yaw:=", LaunchConfiguration("initial_world_yaw")],
+        #     ],
+        #     output="screen",
+        # ),
 
         ExecuteProcess(
             cmd=[

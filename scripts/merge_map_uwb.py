@@ -39,15 +39,15 @@ class MergeMapUwb(Node):
             "base_frame_suffix", "base_footprint").value)
         self.range_topic_suffix = str(self.declare_parameter(
             "range_topic_suffix", "uwb/range").value)
-        self.min_samples = int(self.declare_parameter("min_range_samples", 20).value)
+        self.min_samples = int(self.declare_parameter("min_range_samples", 20).value) ## 20
         self.max_samples = int(self.declare_parameter("max_range_samples", 1000).value)
-        self.min_motion = float(self.declare_parameter("min_sample_motion_m", 0.08).value)
+        self.min_motion = float(self.declare_parameter("min_sample_motion_m", 0.1).value) ## 0.08
         self.max_anchor_rmse = float(self.declare_parameter(
-            "max_anchor_rmse_m", 0.35).value)
+            "max_anchor_rmse_m", 0.4).value) ## 0.35
         self.max_anchor_match = float(self.declare_parameter(
-            "max_anchor_match_error_m", 0.60).value)
+            "max_anchor_match_error_m", 1.0).value) ## 0.6
         self.min_feature_matches = int(self.declare_parameter(
-            "min_feature_matches", 5).value)
+            "min_feature_matches", 3).value) ## 5
         self.max_features = int(self.declare_parameter(
             "max_features", 2500).value)
         self.orb_fast_threshold = int(self.declare_parameter(
@@ -55,43 +55,57 @@ class MergeMapUwb(Node):
         self.orb_edge_threshold = int(self.declare_parameter(
             "orb_edge_threshold", 8).value)
         self.orb_patch_size = int(self.declare_parameter(
-            "orb_patch_size", 31).value)
+            "orb_patch_size", 10).value) ## 31
         self.feature_ratio = float(self.declare_parameter(
-            "feature_ratio", 0.78).value)
+            "feature_ratio", 0.85).value) ## 0.78
         self.ransac_batches = int(self.declare_parameter(
-            "ransac_batches", 60).value)
+            "ransac_batches", 100).value) ## 60
         self.ransac_threshold = float(self.declare_parameter(
-            "ransac_threshold_m", 0.20).value)
+            "ransac_threshold_m", 0.30).value) ## 0.20
         self.min_ransac_inliers = int(self.declare_parameter(
-            "min_ransac_inliers", 4).value)
+            "min_ransac_inliers", 3).value) ## 4
         self.min_ransac_inlier_ratio = float(self.declare_parameter(
-            "min_ransac_inlier_ratio", 0.30).value)
+            "min_ransac_inlier_ratio", 0.20).value) ## 0.30
         self.min_scale = float(self.declare_parameter("min_scale", 0.95).value)
         self.max_scale = float(self.declare_parameter("max_scale", 1.05).value)
-        self.dedup_yaw = math.radians(float(self.declare_parameter(
-            "dedup_yaw_deg", 2.0).value))
-        self.dedup_translation = float(self.declare_parameter(
-            "dedup_translation_m", 0.20).value)
+        # self.dedup_yaw = math.radians(float(self.declare_parameter(
+        #     "dedup_yaw_deg", 1.0).value)) ## 2.0
+        # self.dedup_translation = float(self.declare_parameter(
+        #     "dedup_translation_m", 0.10).value) ## 0.20
+        self.yaw_cluster_deg = float(self.declare_parameter(
+            "yaw_cluster_deg", 5.0).value)
+        self.max_yaw_hypotheses = int(self.declare_parameter(
+            "max_yaw_hypotheses", 12).value)
+        self.max_pairwise_matches = int(self.declare_parameter(
+            "max_pairwise_matches", 80).value)
+        self.min_pair_baseline = float(self.declare_parameter(
+            "min_pair_baseline_m", 0.50).value)
         self.min_overlap_score = float(self.declare_parameter(
-            "min_overlap_score", 0.2).value)
+            "min_overlap_score", 0.5).value) ## 0.2
+        self.min_overlap_coverage = float(self.declare_parameter(
+            "min_overlap_coverage", 0.2).value) ## 0.1 0.05
         self.wall_tolerance = float(self.declare_parameter(
             "wall_tolerance_m", 0.10).value)
-        self.refine_translation = float(self.declare_parameter(
-            "refine_translation_m", 0.30).value)
-        self.refine_translation_step = float(self.declare_parameter(
-            "refine_translation_step_m", 0.10).value)
         self.refine_yaw = float(self.declare_parameter(
             "refine_yaw_deg", 3.0).value)
         self.refine_yaw_step = float(self.declare_parameter(
             "refine_yaw_step_deg", 1.0).value)
-        self.refine_fine_translation_step = float(self.declare_parameter(
-            "refine_fine_translation_step_m", 0.025).value)
         self.refine_fine_yaw_step = float(self.declare_parameter(
             "refine_fine_yaw_step_deg", 0.25).value)
         self.feature_weight = float(self.declare_parameter(
             "feature_weight", 1.0).value)
+        self.overlap_weight = float(self.declare_parameter(
+            "overlap_weight", 1.0).value)
+        self.coverage_weight = float(self.declare_parameter(
+            "coverage_weight", 0.5).value)
         self.anchor_weight = float(self.declare_parameter(
             "anchor_weight", 2.0).value)
+        self.global_yaw_step = float(self.declare_parameter(
+            "global_yaw_step_deg", 5.0).value)
+        self.global_yaw_top_k = int(self.declare_parameter(
+            "global_yaw_top_k", 5).value)
+        self.global_yaw_nms = math.radians(float(self.declare_parameter(
+            "global_yaw_nms_deg", 10.0).value))
         self.output_resolution = float(self.declare_parameter(
             "output_resolution", 0.05).value)
         self.map_padding = float(self.declare_parameter("map_padding_m", 1.0).value)
@@ -222,6 +236,7 @@ class MergeMapUwb(Node):
             first, second = pair[0], pair[1]
             if first.distance < self.feature_ratio * second.distance:
                 matches.append(first)
+        matches.sort(key=lambda match: match.distance)
         if len(matches) < self.min_feature_matches:
             return []
         src_px = np.float32([kp2[m.queryIdx].pt for m in matches])
@@ -229,7 +244,7 @@ class MergeMapUwb(Node):
         src = self.pixel_to_local(mov, src_px)
         dst = self.pixel_to_local(ref, dst_px)
 
-        candidates = []
+        yaw_votes = []
         rng = np.random.default_rng(7)
         batches = [np.arange(len(matches))]
         for _ in range(self.ransac_batches):
@@ -252,12 +267,71 @@ class MergeMapUwb(Node):
             if not self.min_scale <= scale <= self.max_scale:
                 continue
             yaw = math.atan2(M[1, 0], M[0, 0])
-            candidate = (float(M[0, 2]), float(M[1, 2]), yaw)
-            if all(abs(math.atan2(math.sin(yaw-c[2]), math.cos(yaw-c[2]))) > self.dedup_yaw
-                   or math.hypot(candidate[0]-c[0], candidate[1]-c[1]) > self.dedup_translation
-                   for c in candidates):
-                candidates.append(candidate)
-        return candidates
+            # A RANSAC mode gets a stronger vote than one feature-pair vote.
+            yaw_votes.append((yaw, float(3 * inlier_count)))
+
+        # Translation along a repetitive corridor is ambiguous.  Generate yaw
+        # evidence independently from the direction difference of matched
+        # feature-pair baselines, without assuming any special angle.
+        pair_count = min(len(matches), self.max_pairwise_matches)
+        for i in range(pair_count):
+            for j in range(i + 1, pair_count):
+                src_delta = src[j] - src[i]
+                dst_delta = dst[j] - dst[i]
+                src_length = float(np.linalg.norm(src_delta))
+                dst_length = float(np.linalg.norm(dst_delta))
+                if src_length < self.min_pair_baseline or dst_length < self.min_pair_baseline:
+                    continue
+                scale = dst_length / src_length
+                if not self.min_scale <= scale <= self.max_scale:
+                    continue
+                yaw = math.atan2(dst_delta[1], dst_delta[0]) - math.atan2(
+                    src_delta[1], src_delta[0])
+                yaw = math.atan2(math.sin(yaw), math.cos(yaw))
+                yaw_votes.append((yaw, 1.0))
+
+        return self.cluster_yaw_votes(yaw_votes)
+
+    def cluster_yaw_votes(self, yaw_votes):
+        """Cluster circular yaw votes and return (yaw, normalized support)."""
+        if not yaw_votes:
+            return []
+        bin_count = max(12, int(math.ceil(360.0 / self.yaw_cluster_deg)))
+        weights = np.zeros(bin_count, dtype=np.float64)
+        sin_sum = np.zeros(bin_count, dtype=np.float64)
+        cos_sum = np.zeros(bin_count, dtype=np.float64)
+        for yaw, weight in yaw_votes:
+            normalized = (yaw + math.pi) % (2.0 * math.pi)
+            index = min(bin_count - 1, int(normalized / (2.0 * math.pi) * bin_count))
+            weights[index] += weight
+            sin_sum[index] += weight * math.sin(yaw)
+            cos_sum[index] += weight * math.cos(yaw)
+
+        # Include neighboring bins so a mode split by a bin boundary remains
+        # one circular cluster.
+        smoothed = np.array([
+            weights[(i - 1) % bin_count] + weights[i] + weights[(i + 1) % bin_count]
+            for i in range(bin_count)
+        ])
+        order = np.argsort(smoothed)[::-1]
+        hypotheses = []
+        for index in order:
+            support = float(smoothed[index])
+            if support <= 0.0:
+                break
+            indices = ((index - 1) % bin_count, index, (index + 1) % bin_count)
+            yaw = math.atan2(
+                float(sum(sin_sum[i] for i in indices)),
+                float(sum(cos_sum[i] for i in indices)))
+            if any(abs(math.atan2(math.sin(yaw - old[0]), math.cos(yaw - old[0])))
+                   <= math.radians(self.yaw_cluster_deg)
+                   for old in hypotheses):
+                continue
+            hypotheses.append((yaw, support))
+            if len(hypotheses) >= self.max_yaw_hypotheses:
+                break
+        max_support = max(item[1] for item in hypotheses)
+        return [(yaw, support / max_support) for yaw, support in hypotheses]
 
     @staticmethod
     def transform_point(transform, point):
@@ -283,7 +357,7 @@ class MergeMapUwb(Node):
         mov_data = np.asarray(mov.data, dtype=np.int16).reshape(mov.info.height, mov.info.width)
         ys, xs = np.where(mov_data >= 60)
         if len(xs) == 0:
-            return 0.0
+            return -1.0, 0, 0, 0, 0.0
         stride = max(1, len(xs) // 5000)
         xy = np.column_stack((xs[::stride], ys[::stride]))
         local = self.pixel_to_local(mov, xy)
@@ -294,8 +368,8 @@ class MergeMapUwb(Node):
         gx = np.floor((rx - ref.info.origin.position.x) / ref.info.resolution).astype(int)
         gy = np.floor((ry - ref.info.origin.position.y) / ref.info.resolution).astype(int)
         inside = (gx >= 0) & (gy >= 0) & (gx < ref.info.width) & (gy < ref.info.height)
-        if inside.sum() < 20:
-            return -1.0
+        if inside.sum() < 40: ## 40 20
+            return -1.0, 0, 0, 0, 0.0
         values = context["data"][gy[inside], gx[inside]]
         distances = context["wall_distance_px"][gy[inside], gx[inside]]
         agree = distances <= context["wall_tolerance_px"]
@@ -303,73 +377,159 @@ class MergeMapUwb(Node):
         agree_count = int(np.count_nonzero(agree))
         conflict_count = int(np.count_nonzero(conflict))
         known_count = agree_count + conflict_count
-        if known_count < 20:
-            return -1.0
-        return float((agree_count - conflict_count) / known_count)
+        if known_count < 40: ## 40 20
+            return -1.0, agree_count, conflict_count, known_count, 0.0
+        score = float((agree_count - conflict_count) / known_count)
+        coverage = float(known_count / len(xy))
+        return score, agree_count, conflict_count, known_count, coverage
 
-    def refine_candidate(self, ref, mov, transform, context):
-        best_score = self.overlap_score(ref, mov, transform, context)
-        best_transform = transform
+    @staticmethod
+    def anchor_constrained_transform(yaw, anchor_ref, anchor_mov):
+        """Return map1->map0 SE(2) whose common-anchor positions coincide."""
+        c, s = math.cos(yaw), math.sin(yaw)
+        rotated_x = c * anchor_mov[0] - s * anchor_mov[1]
+        rotated_y = s * anchor_mov[0] + c * anchor_mov[1]
+        tx = float(anchor_ref[0] - rotated_x)
+        ty = float(anchor_ref[1] - rotated_y)
+        normalized_yaw = math.atan2(math.sin(yaw), math.cos(yaw))
+        return tx, ty, normalized_yaw
+
+    def refine_anchor_constrained_candidate(
+            self, ref, mov, yaw, anchor_ref, anchor_mov, context):
+        """Refine feature yaw while recomputing translation from the anchor."""
+        best_transform = self.anchor_constrained_transform(
+            yaw, anchor_ref, anchor_mov)
+        best_metrics = self.overlap_score(ref, mov, best_transform, context)
         stages = (
-            (self.refine_translation, self.refine_translation_step,
-             self.refine_yaw, self.refine_yaw_step),
-            (self.refine_translation_step, self.refine_fine_translation_step,
-             self.refine_yaw_step, self.refine_fine_yaw_step),
+            (self.refine_yaw, self.refine_yaw_step),
+            (self.refine_yaw_step, self.refine_fine_yaw_step),
         )
-        center = transform
-        for translation_radius, translation_step, yaw_radius, yaw_step in stages:
-            translation_offsets = np.arange(
-                -translation_radius,
-                translation_radius + 0.5 * translation_step,
-                translation_step)
+        center_yaw = yaw
+        for yaw_radius, yaw_step in stages:
             yaw_offsets = np.deg2rad(np.arange(
                 -yaw_radius, yaw_radius + 0.5 * yaw_step, yaw_step))
-            stage_score, stage_transform = best_score, best_transform
-            for dx in translation_offsets:
-                for dy in translation_offsets:
-                    for dyaw in yaw_offsets:
-                        candidate = (
-                            center[0] + float(dx), center[1] + float(dy),
-                            center[2] + float(dyaw))
-                        score = self.overlap_score(ref, mov, candidate, context)
-                        if score > stage_score:
-                            stage_score, stage_transform = score, candidate
-            best_score, best_transform = stage_score, stage_transform
-            center = best_transform
-        return best_transform, best_score
+            stage_metrics, stage_transform = best_metrics, best_transform
+            for dyaw in yaw_offsets:
+                candidate = self.anchor_constrained_transform(
+                    center_yaw + float(dyaw), anchor_ref, anchor_mov)
+                metrics = self.overlap_score(ref, mov, candidate, context)
+                if (metrics[0], metrics[4]) > (stage_metrics[0], stage_metrics[4]):
+                    stage_metrics, stage_transform = metrics, candidate
+            best_metrics, best_transform = stage_metrics, stage_transform
+            center_yaw = best_transform[2]
+        return best_transform, best_metrics
 
     def select_transform(self, ref_ns, mov_ns):
         ref, mov = self.maps[ref_ns], self.maps[mov_ns]
-        candidates = self.feature_candidates(ref, mov)
-        if not candidates:
-            return None
+        yaw_hypotheses = self.feature_candidates(ref, mov)
         a_ref, a_mov = self.anchors[ref_ns][0], self.anchors[mov_ns][0]
         overlap_context = self.make_overlap_context(ref)
-        best = None
-        for raw_transform in candidates:
-            transform, overlap = self.refine_candidate(
-                ref, mov, raw_transform, overlap_context)
+
+        def feature_support_at(yaw):
+            if not yaw_hypotheses:
+                return 0.0
+            sigma = max(math.radians(self.yaw_cluster_deg), 1e-6)
+            return max(
+                support * math.exp(-0.5 * (
+                    math.atan2(math.sin(yaw - feature_yaw),
+                               math.cos(yaw - feature_yaw)) / sigma) ** 2)
+                for feature_yaw, support in yaw_hypotheses)
+
+        def make_item(transform, metrics, support, mode):
+            overlap, agree, conflict, known, coverage = metrics
             anchor_error = float(np.linalg.norm(
                 self.transform_point(transform, a_mov) - a_ref))
-            total = self.feature_weight * overlap - self.anchor_weight * anchor_error
-            item = (total, overlap, anchor_error, transform)
-            # item = (overlap, transform)
-            if best is None or item[0] > best[0]:
-                best = item
-        if best[1] < self.min_overlap_score or best[2] > self.max_anchor_match:
+            total = (
+                self.overlap_weight * overlap
+                + self.coverage_weight * coverage
+                + self.feature_weight * support
+                - self.anchor_weight * anchor_error)
+            return {
+                "total": total, "overlap": overlap, "coverage": coverage,
+                "anchor_error": anchor_error, "support": support,
+                "transform": transform, "agree": agree,
+                "conflict": conflict, "known": known, "mode": mode,
+            }
+
+        def is_valid(item):
+            return (
+                item["overlap"] >= self.min_overlap_score
+                and item["coverage"] >= self.min_overlap_coverage ## 지울지 말지
+                and item["anchor_error"] <= self.max_anchor_match)
+
+        # First evaluate feature-supported circular yaw clusters.
+        feature_items = []
+        for yaw, support in yaw_hypotheses:
+            transform, metrics = self.refine_anchor_constrained_candidate(
+                ref, mov, yaw, a_ref, a_mov, overlap_context)
+            feature_items.append(make_item(
+                transform, metrics, feature_support_at(transform[2]), "feature"))
+
+        valid_items = [item for item in feature_items if is_valid(item)]
+        evaluated_items = list(feature_items)
+
+        # If every feature yaw fails, one common anchor leaves only one unknown
+        # DOF.  Search that yaw globally, select separated coarse peaks, and
+        # refine only those peaks.  No environment-specific angle is assumed.
+        if not valid_items:
+            coarse_items = []
+            for yaw_deg in np.arange(-180.0, 180.0, self.global_yaw_step):
+                yaw = math.radians(float(yaw_deg))
+                transform = self.anchor_constrained_transform(yaw, a_ref, a_mov)
+                metrics = self.overlap_score(ref, mov, transform, overlap_context)
+                coarse_items.append(make_item(
+                    transform, metrics, feature_support_at(yaw), "global_coarse"))
+            # Structural agreement leads the fallback search; otherwise one
+            # bad but strongly voted feature mode could occupy every peak.
+            coarse_items.sort(
+                key=lambda item: (item["overlap"], item["coverage"]),
+                reverse=True)
+
+            coarse_peaks = []
+            for item in coarse_items:
+                yaw = item["transform"][2]
+                if any(abs(math.atan2(
+                        math.sin(yaw - old["transform"][2]),
+                        math.cos(yaw - old["transform"][2]))) < self.global_yaw_nms
+                       for old in coarse_peaks):
+                    continue
+                coarse_peaks.append(item)
+                if len(coarse_peaks) >= self.global_yaw_top_k:
+                    break
+
+            global_items = []
+            for peak in coarse_peaks:
+                transform, metrics = self.refine_anchor_constrained_candidate(
+                    ref, mov, peak["transform"][2], a_ref, a_mov,
+                    overlap_context)
+                global_items.append(make_item(
+                    transform, metrics, feature_support_at(transform[2]),
+                    "global"))
+            evaluated_items.extend(global_items)
+            valid_items = [item for item in global_items if is_valid(item)]
+
+        pool = valid_items if valid_items else evaluated_items
+        if not pool:
+            self.get_logger().warn("registration rejected: no yaw hypothesis")
+            return None
+        best = max(pool, key=lambda item: item["total"])
+        if not is_valid(best):
             self.get_logger().warn(
-                f"registration rejected: overlap={best[1]:.3f}, anchor_error={best[2]:.3f}m")
+                f"registration rejected: mode={best['mode']}, "
+                f"overlap={best['overlap']:.3f}, coverage={best['coverage']:.3f}, "
+                f"known={best['known']}, feature_support={best['support']:.3f}, "
+                f"anchor_error={best['anchor_error']:.3f}m, "
+                f"tx={best['transform'][0]:.3f}m, ty={best['transform'][1]:.3f}m, "
+                f"yaw={math.degrees(best['transform'][2]):.2f}deg")
             return None
         self.get_logger().info(
-            f"registration accepted: overlap={best[1]:.3f}, anchor_error={best[2]:.3f}m")
-        return best[3]
-        # if best[0] < self.min_overlap_score:
-        #     self.get_logger().warn(
-        #         f"registration rejected: overlap={best[0]:.3f}")
-        #     return None
-        # self.get_logger().info(
-        #     f"registration accepted: overlap={best[0]:.3f}")
-        # return best[1]
+            f"registration accepted: mode={best['mode']}, "
+            f"overlap={best['overlap']:.3f}, coverage={best['coverage']:.3f}, "
+            f"known={best['known']}, feature_support={best['support']:.3f}, "
+            f"anchor_error={best['anchor_error']:.3f}m, "
+            f"tx={best['transform'][0]:.3f}m, ty={best['transform'][1]:.3f}m, "
+            f"yaw={math.degrees(best['transform'][2]):.2f}deg")
+        return best["transform"]
 
     def broadcast_transforms(self):
         messages = []

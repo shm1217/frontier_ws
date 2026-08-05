@@ -142,8 +142,8 @@ def launch_setup(context, *args, **kwargs):
     # =========================================================
     frontier_node = Node(
         package="frontier_ws",
-        executable="frontier_multi",
-        name="frontier_multi",
+        executable="frontier_multi_uwb",
+        name="frontier_multi_uwb",
         namespace=ns,
         output="screen",
         parameters=[

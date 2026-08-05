@@ -94,8 +94,8 @@ def generate_launch_description():
             output='screen',
             parameters=[slam_params],
             remappings=[
-                ('scan',  f'/{ns}/scan'),
-                ('odom',  f'/{ns}/odom'),
+                ('/scan',  f'/{ns}/scan'),
+                ('/odom',  f'/{ns}/odom'),
                 ('/map',  f'/{ns}/map'),
                 ('/map_metadata', f'/{ns}/map_metadata'),
             ],
