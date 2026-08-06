@@ -11,8 +11,9 @@ from nav2_common.launch import RewrittenYaml
 
 
 def launch_setup(context, *args, **kwargs):
-    use_sim_time = False
-    use_sim_time_str = "False"
+    use_sim_time_str = LaunchConfiguration("use_sim_time").perform(context)
+    use_sim_time = use_sim_time_str.lower() in ("true", "1", "yes")
+    use_sim_time_str = "True" if use_sim_time else "False"
 
     pkg_dir = get_package_share_directory('frontier_ws')
     param_file = os.path.join(pkg_dir, 'config', 'params.yaml')
@@ -93,18 +94,18 @@ def launch_setup(context, *args, **kwargs):
     # =========================================================
     # 3) world -> {ns}/map static TF
     # =========================================================
-    actions.append(Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        name=f"world_to_{ns}_map",
-        output="screen",
-        arguments=[
-            "--x", "0.0", "--y", "0.0", "--z", "0",
-            "--yaw", "0", "--pitch", "0", "--roll", "0",
-            "--frame-id", "world",
-            "--child-frame-id", f"{ns}/map",
-        ],
-    ))
+    # actions.append(Node(
+    #     package="tf2_ros",
+    #     executable="static_transform_publisher",
+    #     name=f"world_to_{ns}_map",
+    #     output="screen",
+    #     arguments=[
+    #         "--x", "0.0", "--y", "0.0", "--z", "0",
+    #         "--yaw", "0", "--pitch", "0", "--roll", "0",
+    #         "--frame-id", "world",
+    #         "--child-frame-id", f"{ns}/map",
+    #     ],
+    # ))
 
     # =========================================================
     # 4) DWB (controller_server + lifecycle_manager)
@@ -115,8 +116,9 @@ def launch_setup(context, *args, **kwargs):
             root_key=ns,
             param_rewrites={
                 'use_sim_time': use_sim_time_str,
-                'local_costmap.local_costmap.ros__parameters.robot_base_frame': f'{ns}/base_footprint',
-                'local_costmap.local_costmap.ros__parameters.obstacle_layer.scan.topic': f'/{ns}/scan',
+                'robot_base_frame': f'{ns}/base_footprint',
+                'global_frame': f'{ns}/odom',
+                'topic': f'/{ns}/scan',
             },
             convert_types=True),
         allow_substs=True)
@@ -270,6 +272,11 @@ def generate_launch_description():
             "robot_namespace",
             default_value="tb3_0",
             description="이 launch를 실행할 로봇의 네임스페이스 (예: tb3_0, tb3_1)",
+        ),
+        DeclareLaunchArgument(
+            "use_sim_time",
+            default_value="false",
+            description="하드웨어에서는 false, bag/시뮬레이션에서는 true",
         ),
         OpaqueFunction(function=launch_setup),
     ])

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Start the separate UWB-assisted merger and gated global goal allocator.
+"""Start the UWB-assisted merger.
 
 SLAM and frontier_multi must already be running per robot.  Before registration,
-frontier_multi uses its existing local-map fallback.  Do not run manual
-world->tb3_x/map static publishers together with this launch.
+frontier_multi uses its existing local-map fallback.  After registration each
+robot explores /merge_map independently and coordinates through goal
+reservations.  Do not run manual world->tb3_x/map static publishers together
+with this launch.
 """
 
 import os
@@ -11,20 +13,22 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 
 
 def generate_launch_description():
     scripts = os.path.join(get_package_share_directory("frontier_ws"), "scripts")
     merger = os.path.join(scripts, "merge_map_uwb.py")
-    gate = os.path.join(scripts, "gate_node_uwb.py")
-    ranger = os.path.join(scripts, "uwb_range_node_uwb.py")
     mock_ranger = os.path.join(scripts, "mock_uwb_range_uwb.py")
     robots = LaunchConfiguration("robot_namespaces")
 
     return LaunchDescription([
         DeclareLaunchArgument(
             "robot_namespaces", default_value="['tb3_0','tb3_1']"),
+        DeclareLaunchArgument(
+            "use_mock_uwb", default_value="false",
+            description="하드웨어 UWB 사용 시 false, Gazebo에서는 true"),
         DeclareLaunchArgument(
             "tb3_0_serial_port", default_value="/dev/ttyUSB_tb3_0"),
         DeclareLaunchArgument(
@@ -64,38 +68,30 @@ def generate_launch_description():
         #     output="screen",
         # ),
 
-        ## 시뮬레이션
-        # ExecuteProcess(
-        #     cmd=[
-        #         "python3",
-        #         mock_ranger,
-        #         "--ros-args",
-        #         "-p", ["robot_namespaces:=", robots],
-        #         "-p", ["anchor_x:=", LaunchConfiguration("anchor_x")],
-        #         "-p", ["anchor_y:=", LaunchConfiguration("anchor_y")],
-        #         "-p", ["publish_rate_hz:=", LaunchConfiguration("publish_rate_hz")],
-        #         "-p", ["noise_stddev_m:=", LaunchConfiguration("noise_stddev_m")],
-        #         "-p", ["model_states_topic:=", LaunchConfiguration("model_states_topic")],
-        #         "-p", ["initial_world_x:=", LaunchConfiguration("initial_world_x")],
-        #         "-p", ["initial_world_y:=", LaunchConfiguration("initial_world_y")],
-        #         "-p", ["initial_world_yaw:=", LaunchConfiguration("initial_world_yaw")],
-        #     ],
-        #     output="screen",
-        # ),
+        # 시뮬레이션
+        ExecuteProcess(
+            cmd=[
+                "python3",
+                mock_ranger,
+                "--ros-args",
+                "-p", ["robot_namespaces:=", robots],
+                "-p", ["anchor_x:=", LaunchConfiguration("anchor_x")],
+                "-p", ["anchor_y:=", LaunchConfiguration("anchor_y")],
+                "-p", ["publish_rate_hz:=", LaunchConfiguration("publish_rate_hz")],
+                "-p", ["noise_stddev_m:=", LaunchConfiguration("noise_stddev_m")],
+                "-p", ["model_states_topic:=", LaunchConfiguration("model_states_topic")],
+                "-p", ["initial_world_x:=", LaunchConfiguration("initial_world_x")],
+                "-p", ["initial_world_y:=", LaunchConfiguration("initial_world_y")],
+                "-p", ["initial_world_yaw:=", LaunchConfiguration("initial_world_yaw")],
+            ],
+            output="screen",
+            condition=IfCondition(LaunchConfiguration("use_mock_uwb")),
+        ),
 
         ExecuteProcess(
             cmd=[
                 "python3", merger, "--ros-args",
                 "-p", ["robot_namespaces:=", robots],
-            ],
-            output="screen",
-        ),
-        ExecuteProcess(
-            cmd=[
-                "python3", gate, "--ros-args",
-                "-p", ["robot_namespaces:=", robots],
-                "-p", "merge_map_topic:=/merge_map",
-                "-p", "global_frame:=world",
             ],
             output="screen",
         ),

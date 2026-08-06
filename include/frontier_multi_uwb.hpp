@@ -2,8 +2,11 @@
 #define FRONTIER_MULTI_UWB_HPP_
 
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
+#include <nav_msgs/msg/path.hpp>
+#include <nav2_msgs/action/follow_path.hpp>
 #include <geometry_msgs/msg/twist.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 
@@ -123,11 +126,17 @@ private:
 
 
     static double normAngle(double a);
-    double minRange(double a_min, double a_max);
+    double minRange(double a_min, double a_max) const;
     void publishStop(const char* reason);
     void publishAvoidCmd();
     int findNearestIndexOnPath(const std::vector<GridPose>& path, int start_idx, int window);
     void followPathStep();
+    bool updateDynamicController();
+    geometry_msgs::msg::Twist applyDynamicSafetyFilter(geometry_msgs::msg::Twist cmd) const;
+    void cancelDwbGoal();
+    void clearPathAndCancel();
+    nav_msgs::msg::Path makeNavPath() const;
+    void onDwbCmd(const geometry_msgs::msg::Twist::SharedPtr msg);
 
     bool isRobotStuck();
     void resetStuckCheck();
@@ -159,6 +168,12 @@ private:
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_pub_;
+    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr dwb_cmd_sub_;
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr dynamic_cmd_pub_;
+    using FollowPath = nav2_msgs::action::FollowPath;
+    using FollowPathGoalHandle = rclcpp_action::ClientGoalHandle<FollowPath>;
+    rclcpp_action::Client<FollowPath>::SharedPtr follow_path_client_;
+    FollowPathGoalHandle::SharedPtr follow_path_goal_handle_;
     rclcpp::TimerBase::SharedPtr timer_;
 
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr path_marker_pub_;
@@ -175,10 +190,13 @@ private:
 
     // ---------- Params / topics ----------
     std::string robot_id_;
-    std::string map_topic_, cmd_topic_, scan_topic_;
+    std::string map_topic_, cmd_topic_, dwb_cmd_topic_, dynamic_cmd_topic_, scan_topic_;
+    std::string follow_path_action_name_;
     std::string map_frame_, base_frame_;
     std::string global_frame_;
     double tf_timeout_s_ = 0.1;
+    bool path_sent_to_dwb_ = false;
+    uint64_t active_path_id_ = 0;
 
     std::string path_marker_topic_, frontier_marker_topic_, infl_marker_topic_, cluster_marker_topic_;
     bool enable_viz_ = true;
@@ -217,6 +235,15 @@ private:
     double laser_block_ttl_ = 1.0;
     double laser_inflation_radius_m_ = 0.15;
 
+    std::shared_ptr<Controller> dynamic_controller_;
+    geometry_msgs::msg::Twist last_dwb_cmd_;
+    rclcpp::Time last_dwb_cmd_time_{0, 0, RCL_ROS_TIME};
+    double dwb_cmd_timeout_s_ = 0.50;
+    double dynamic_max_linear_speed_ = 0.08;
+    double dynamic_max_angular_speed_ = 0.8;
+    double dynamic_stop_distance_ = 0.32;
+    double dynamic_slow_distance_ = 0.55;
+
     // Stuck
     double stuck_timeout_s_{5.0};
     double stuck_min_move_m_{0.02};
@@ -243,6 +270,8 @@ private:
 
     double reserve_exclusion_radius_m_ = 1.5;
     double reserve_ttl_s_ = 5.0;
+    double reserve_refresh_period_s_ = 1.0;
+    rclcpp::Time last_reservation_pub_{0, 0, RCL_ROS_TIME};
 
     // reserve point topics
     std::string reserve_out_topic_;
@@ -262,16 +291,24 @@ private:
 
     rclcpp::Time last_replan_check_{0,0,RCL_ROS_TIME};
     double replan_check_period_s_ = 2.0;  
+    rclcpp::Time last_plan_attempt_{0,0,RCL_ROS_TIME};
+    double plan_retry_period_s_ = 0.75;
 
     rclcpp::Time goal_commit_start_{0,0,RCL_ROS_TIME};
     double min_commit_time_s_ = 3.0;       
 
-    double ig_drop_thresh_ = 0.5;    
+    double ig_drop_thresh_ = 0.5;
+    double goal_initial_ig_ = 0.0;
+    double ig_drop_ratio_ = 0.40;
+    double ig_drop_baseline_min_ = 0.20;
+    double ig_replan_min_age_s_ = 2.0;
 
     // ---- Gate 관련 ----
     std::string gate_goal_topic_;
     std::string map_delta_topic_;
     double gate_timeout_s_{10.0};
+    double gate_goal_switch_distance_m_{0.75};
+    double gate_goal_min_distance_m_{0.75};
     double map_delta_period_s_{1.0};
 
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_delta_pub_;
@@ -308,9 +345,8 @@ private:
     void onLocalMap(const nav_msgs::msg::OccupancyGrid::SharedPtr msg);
     void selectActiveMap();
 
-    // controller
+    // dynamic obstacle controller
     rclcpp::Subscription<frontier_ws::msg::DynamicObstacle>::SharedPtr obs_sub_;
-    std::shared_ptr<Controller> controller;
     void obsCallback(const frontier_ws::msg::DynamicObstacle::SharedPtr msg);
 
 

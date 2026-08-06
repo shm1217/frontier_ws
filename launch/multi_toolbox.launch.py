@@ -12,8 +12,8 @@ from nav2_common.launch import RewrittenYaml
 def generate_launch_description():
     ld = LaunchDescription()
 
-    use_sim_time = False
-    use_sim_time_str = "False"
+    use_sim_time = True
+    use_sim_time_str = "True"
     pkg_dir = get_package_share_directory('frontier_ws')
     param_file = os.path.join(pkg_dir, 'config', 'params.yaml')
     dwb_param_file = os.path.join(pkg_dir, 'config', 'dwb_controller.yaml')
@@ -164,8 +164,11 @@ def generate_launch_description():
                 root_key=ns,
                 param_rewrites={
                     'use_sim_time': use_sim_time_str,
-                    'local_costmap.local_costmap.ros__parameters.robot_base_frame': f'{ns}/base_footprint',
-                    'local_costmap.local_costmap.ros__parameters.obstacle_layer.scan.topic': f'/{ns}/scan',
+                    # Humble의 RewrittenYaml은 여기서 leaf parameter key를
+                    # 대상으로 치환한다.
+                    'robot_base_frame': f'{ns}/base_footprint',
+                    'global_frame': f'{ns}/odom',
+                    'topic': f'/{ns}/scan',
                 },
                 convert_types=True),
             allow_substs=True)
@@ -272,6 +275,6 @@ def generate_launch_description():
         ld.add_action(frontier_node(ns))
         ld.add_action(detect_node(ns))
         ld.add_action(yolo_node(ns))
-        # ld.add_action(camera_node(ns))
+        ld.add_action(camera_node(ns))
 
     return ld
