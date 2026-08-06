@@ -25,7 +25,7 @@ ros2 launch frontier_ws merge_map_uwb.launch.py
         --remap uwb/range:=/tb3_0/uwb/range
       ```
       ```bash
-      ros2 launch frontier_ws multi_toolbox.launch.py robot_namespace:=tb3_1
+      ros2 launch frontier_ws ns_multi_toolbox.launch.py robot_namespace:=tb3_1
       ```
     + merge_map_uwb.launch.py은 중앙 pc에서 실행
       ```bash
