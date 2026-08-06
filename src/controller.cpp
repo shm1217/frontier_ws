@@ -56,6 +56,29 @@ void Controller::pose_update(double x, double y, double yaw)
     has_pose = true;
 }
 
+bool Controller::has_collision_risk()
+{
+    remove_stale_obstacles();
+    if (!has_goal || !has_pose || dynamic_obs.empty()) return false;
+
+    const double goal_yaw = std::atan2(goal_y - robot_y, goal_x - robot_x);
+    const double safety_distance = robot_radius + obstacle_radius + 0.25;
+    for (int step = 1; step <= obs_N; ++step)
+    {
+        const double t = step * dt;
+        const double rx = robot_x + max_v * t * std::cos(goal_yaw);
+        const double ry = robot_y + max_v * t * std::sin(goal_yaw);
+        for (const auto &[id, obstacle] : dynamic_obs)
+        {
+            (void)id;
+            const double ox = obstacle.x + obstacle.vx * t;
+            const double oy = obstacle.y + obstacle.vy * t;
+            if (std::hypot(rx - ox, ry - oy) < safety_distance) return true;
+        }
+    }
+    return false;
+}
+
 geometry_msgs::msg::Twist Controller::control_cmd_update()
 {
     geometry_msgs::msg::Twist cmd;

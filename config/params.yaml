@@ -1,71 +1,112 @@
-frontier_multi:  
+frontier_multi:
   ros__parameters:
+    # ---------------------------------------------------------
     # 토픽 및 프레임 설정
+    # ---------------------------------------------------------
     robot_id: "robot1"
     map_topic: "map"
     cmd_topic: "cmd_vel"
+    dwb_cmd_topic: "cmd_vel_dwb"
+    dynamic_cmd_topic: "cmd_vel_dynamic"
     scan_topic: "scan"
     map_frame: "map"
     base_frame: "base_footprint"
     global_frame: "world"
     tf_timeout_s: 1.0
 
+    # ---------------------------------------------------------
     # 임계점 및 환경 설정
+    # ---------------------------------------------------------
     obstacle_threshold: 60
     free_threshold: 50
     inflation_radius_m: 0.20
     frontier_search_radius_m: 8.0
 
-    has_scan_: false
-    avoiding_: false
-    progress_inited_: false
-    has_map_: false
-    has_goal: false 
-
-    # 제어 및 이동 (Navigation)
-    max_lin_vel: 0.18
-    max_ang_vel: 0.35
-    reach_dist_m: 0.25
-    avoid_enter_dist: 0.40
-    avoid_exit_dist: 0.55
-
+    # ---------------------------------------------------------
     # 안전성 (Clearance)
+    # ---------------------------------------------------------
     frontier_clearance_m: 0.15
     path_clearance_m: 0.08
     keep_open_cells: 2
 
+    # ---------------------------------------------------------
     # 알고리즘 (DBSCAN)
+    # ---------------------------------------------------------
     use_dbscan: true
     dbscan_eps_m: 0.25
     dbscan_min_pts: 10
 
+    # ---------------------------------------------------------
     # Laser Mask
+    # ---------------------------------------------------------
     laser_block_ttl: 1.0
     laser_inflation_radius_m: 0.12
+    laser_obstacle_max_range: 0.40
 
+    # Dynamic Controller: DWB를 우회하는 동안 적용할 안전 제한
+    dynamic_max_linear_speed: 0.08
+    dynamic_max_angular_speed: 0.80
+    dynamic_stop_distance: 0.32
+    dynamic_slow_distance: 0.55
+
+    # ---------------------------------------------------------
     # Stuck 상황 감지
+    # ---------------------------------------------------------
     stuck_timeout_s: 5.0
     stuck_min_move_m: 0.02
 
+    # ---------------------------------------------------------
     # 멀티 로봇 유틸리티 (Weights)
-    utility:
-      utility_radius_m: 1.00
-      info_gain_radius_m: 1.50
-      alpha_info_gain: 10
-      beta_path_len: 2.0
-      delta_reserve: 15.0
-      reserve_exclusion_radius_m: 2.0
-      reserve_ttl_s: 6.0
+    # ---------------------------------------------------------
+    info_gain_radius_m: 1.50 # 후보 지점 중 이 반경 내에서 가장 큰 정보 획득량을 가진 지점 선택
+    alpha_info_gain: 10.0
+    beta_path_len: 2.0
+    delta_reserve: 15.0
+    reserve_exclusion_radius_m: 2.0 # 다른 로봇의 예약지점과의 최소 거리 지정
+    reserve_ttl_s: 6.0
+    reserve_refresh_period_s: 1.0
+    reserve_out_topic: "/global_goal_reservation"
+    # 상대 로봇의 실제 위치를 전역 경로의 임시 장애물로 반영
+    robot_position_topic: "/global_robot_positions"
+    robot_position_period_s: 0.2
+    robot_position_ttl_s: 1.0
+    other_robot_radius_m: 0.32
 
+    # ---------------------------------------------------------
     # 리플래닝 (Replan)
+    # ---------------------------------------------------------
     replan_check_period_s: 0.5
-    min_commit_time_s: 2.0
+    plan_retry_period_s: 0.75
+    min_commit_time_s: 3.0
     ig_drop_thresh: 0.10
+    # 목표 선정 후 주변 unknown이 빠르게 줄면, 목적지 도착 전에도 재선정
+    ig_drop_ratio: 0.40 # 너무 자주 목표 바꾸면 좀 낮추기
+    ig_drop_baseline_min: 0.20
+    ig_replan_min_age_s: 2.0
+    replan_stop_hold_s: 0.4
 
+    # ---------------------------------------------------------
+    # Gate 관련
+    # ---------------------------------------------------------
+    gate_goal_topic: "goal_assignment"
+    map_delta_topic: "map_delta"
+    gate_timeout_s: 3.0
+    map_delta_period_s: 1.0
+    blacklist_ttl_s: 20.0
+    blacklist_radius_m_: 1.5
+    gate_plan_fail_max: 3
+
+    # ---------------------------------------------------------
+    # 로컬 맵 폴백
+    # ---------------------------------------------------------
+    local_map_topic: "map"
+    merge_map_stale_s: 5.0
+
+    # ---------------------------------------------------------
     # 시각화 (Visualization)
+    # ---------------------------------------------------------
     enable_viz: true
     path_marker_topic: "path_marker"
     frontier_marker_topic: "frontier_markers"
     infl_marker_topic: "inflation_marker"
     cluster_marker_topic: "cluster_marker"
-    reserve_out_topic: "/global_goal_reservation"

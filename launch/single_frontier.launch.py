@@ -2,6 +2,8 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import Node
+from launch_ros.descriptions import ParameterFile
+from nav2_common.launch import RewrittenYaml
 
 def generate_launch_description():
     use_sim_time = False
@@ -9,6 +11,19 @@ def generate_launch_description():
 
     cartographer_config_dir = os.path.join(get_package_share_directory('frontier_ws'), 'lua')
     lua_file = "tb3_1_turtlebot3_lds_2d.lua"
+    dwb_param_file = os.path.join(
+        get_package_share_directory('frontier_ws'), 'config', 'dwb_controller.yaml')
+    dwb_params = ParameterFile(
+        RewrittenYaml(
+            source_file=dwb_param_file,
+            root_key=ns,
+            param_rewrites={
+                'use_sim_time': str(use_sim_time),
+                'local_costmap.local_costmap.ros__parameters.robot_base_frame': f'{ns}/base_footprint',
+                'local_costmap.local_costmap.ros__parameters.obstacle_layer.scan.topic': f'/{ns}/scan',
+            },
+            convert_types=True),
+        allow_substs=True)
 
     # A. 메인 카토그래퍼 노드
     cartographer_node = Node(
@@ -91,11 +106,34 @@ def generate_launch_description():
         }]
     )
 
+    controller_server = Node(
+        package='nav2_controller',
+        executable='controller_server',
+        name='controller_server',
+        namespace=ns,
+        output='screen',
+        parameters=[dwb_params],
+        remappings=[('cmd_vel', 'cmd_vel_dwb')],
+    )
+    controller_lifecycle_manager = Node(
+        package='nav2_lifecycle_manager',
+        executable='lifecycle_manager',
+        name='lifecycle_manager_controller',
+        namespace=ns,
+        output='screen',
+        parameters=[{
+            'use_sim_time': use_sim_time,
+            'autostart': True,
+            'node_names': ['controller_server'],
+        }],
+    )
+
     return LaunchDescription([
         static_tf_node,
         world_to_map_node,
         cartographer_node,
         occupancy_grid_node,
-
+        controller_server,
+        controller_lifecycle_manager,
         frontier_node
     ])

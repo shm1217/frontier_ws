@@ -41,6 +41,7 @@ public:
     void goal_update(std::pair<double,double> goal);
     void pose_update(double x, double y, double yaw);
     void obs_update(const frontier_ws::msg::DynamicObstacle::SharedPtr msg);
+    bool has_collision_risk();
     geometry_msgs::msg::Twist control_cmd_update();
 
 private:
