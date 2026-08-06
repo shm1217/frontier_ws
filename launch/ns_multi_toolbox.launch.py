@@ -93,18 +93,18 @@ def launch_setup(context, *args, **kwargs):
     # =========================================================
     # 3) world -> {ns}/map static TF
     # =========================================================
-    actions.append(Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        name=f"world_to_{ns}_map",
-        output="screen",
-        arguments=[
-            "--x", "0.0", "--y", "0.0", "--z", "0",
-            "--yaw", "0", "--pitch", "0", "--roll", "0",
-            "--frame-id", "world",
-            "--child-frame-id", f"{ns}/map",
-        ],
-    ))
+    # actions.append(Node(
+    #     package="tf2_ros",
+    #     executable="static_transform_publisher",
+    #     name=f"world_to_{ns}_map",
+    #     output="screen",
+    #     arguments=[
+    #         "--x", "0.0", "--y", "0.0", "--z", "0",
+    #         "--yaw", "0", "--pitch", "0", "--roll", "0",
+    #         "--frame-id", "world",
+    #         "--child-frame-id", f"{ns}/map",
+    #     ],
+    # ))
 
     # =========================================================
     # 4) DWB (controller_server + lifecycle_manager)
@@ -117,6 +117,7 @@ def launch_setup(context, *args, **kwargs):
                 'use_sim_time': use_sim_time_str,
                 'local_costmap.local_costmap.ros__parameters.robot_base_frame': f'{ns}/base_footprint',
                 'local_costmap.local_costmap.ros__parameters.obstacle_layer.scan.topic': f'/{ns}/scan',
+                'local_costmap.local_costmap.ros__parameters.global_frame': f'{ns}/map',
             },
             convert_types=True),
         allow_substs=True)

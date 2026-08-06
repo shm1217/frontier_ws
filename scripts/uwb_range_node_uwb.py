@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read one DW3000 anchor range from serial and publish sensor_msgs/Range."""
+"""Read one front or back DW3000 tag and publish its anchor range."""
 
 import re
 
@@ -27,6 +27,7 @@ class UwbRangeNode(Node):
         self.declare_parameter("baud_rate", 115200)
         self.declare_parameter("anchor_index", 0)
         self.declare_parameter("frame_id", "uwb_anchor")
+        self.declare_parameter("tag_name", "front")
         self.declare_parameter("min_range", 0.05)
         self.declare_parameter("max_range", 50.0)
 
@@ -34,9 +35,12 @@ class UwbRangeNode(Node):
         baud = int(self.get_parameter("baud_rate").value)
         self.anchor_index = int(self.get_parameter("anchor_index").value)
         self.frame_id = str(self.get_parameter("frame_id").value)
+        self.tag_name = str(self.get_parameter("tag_name").value)
         self.min_range = float(self.get_parameter("min_range").value)
         self.max_range = float(self.get_parameter("max_range").value)
-        self.pub = self.create_publisher(Range, "uwb/range", 10)
+        if self.tag_name not in ("front", "back"):
+            raise ValueError("tag_name must be 'front' or 'back'")
+        self.pub = self.create_publisher(Range, f"uwb/{self.tag_name}/range", 10)
 
         self.ser = None
         if serial is None:

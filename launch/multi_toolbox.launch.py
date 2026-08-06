@@ -166,6 +166,7 @@ def generate_launch_description():
                     'use_sim_time': use_sim_time_str,
                     'local_costmap.local_costmap.ros__parameters.robot_base_frame': f'{ns}/base_footprint',
                     'local_costmap.local_costmap.ros__parameters.obstacle_layer.scan.topic': f'/{ns}/scan',
+                    'local_costmap.local_costmap.ros__parameters.global_frame': f'{ns}/map',
                 },
                 convert_types=True),
             allow_substs=True)

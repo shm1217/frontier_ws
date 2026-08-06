@@ -2,9 +2,12 @@
 """Feature/UWB assisted multi-robot occupancy-grid registration and merging.
 
 The reference robot map becomes ``world``.  ORB map features produce SE(2)
-candidates.  Per-robot range-only observations estimate the common anchor in
-each local map.  Candidate selection combines occupancy agreement and anchor
-alignment.  TF and /merge_map are published only after validation succeeds.
+yaw candidates.  Front/back tags mounted at +/- ``tag_offset_from_base_m``
+observe one common anchor while the robot moves; both range histories jointly
+estimate that anchor in each local map.  Candidate selection combines feature
+support, occupancy agreement, and the two-tag anchor constraint.  A single
+anchor does not independently make absolute yaw observable, so UWB validates
+and stabilizes feature yaw rather than replacing it.
 """
 
 import math
@@ -37,8 +40,12 @@ class MergeMapUwb(Node):
         self.global_frame = str(self.declare_parameter("global_frame", "world").value)
         self.base_suffix = str(self.declare_parameter(
             "base_frame_suffix", "base_footprint").value)
-        self.range_topic_suffix = str(self.declare_parameter(
-            "range_topic_suffix", "uwb/range").value)
+        self.front_range_topic_suffix = str(self.declare_parameter(
+            "front_range_topic_suffix", "uwb/front/range").value)
+        self.back_range_topic_suffix = str(self.declare_parameter(
+            "back_range_topic_suffix", "uwb/back/range").value)
+        self.tag_offset = float(self.declare_parameter(
+            "tag_offset_from_base_m", 0.15).value)
         self.min_samples = int(self.declare_parameter("min_range_samples", 20).value) ## 20
         self.max_samples = int(self.declare_parameter("max_range_samples", 1000).value)
         self.min_motion = float(self.declare_parameter("min_sample_motion_m", 0.1).value) ## 0.08
@@ -47,25 +54,25 @@ class MergeMapUwb(Node):
         self.max_anchor_match = float(self.declare_parameter(
             "max_anchor_match_error_m", 1.0).value) ## 0.6
         self.min_feature_matches = int(self.declare_parameter(
-            "min_feature_matches", 3).value) ## 5
+            "min_feature_matches", 5).value) ## 5
         self.max_features = int(self.declare_parameter(
             "max_features", 2500).value)
         self.orb_fast_threshold = int(self.declare_parameter(
-            "orb_fast_threshold", 5).value)
+            "orb_fast_threshold", 8).value)
         self.orb_edge_threshold = int(self.declare_parameter(
             "orb_edge_threshold", 8).value)
         self.orb_patch_size = int(self.declare_parameter(
-            "orb_patch_size", 10).value) ## 31
+            "orb_patch_size", 31).value) ## 10 31
         self.feature_ratio = float(self.declare_parameter(
-            "feature_ratio", 0.85).value) ## 0.78
+            "feature_ratio", 0.7).value) ## 0.78
         self.ransac_batches = int(self.declare_parameter(
             "ransac_batches", 100).value) ## 60
         self.ransac_threshold = float(self.declare_parameter(
-            "ransac_threshold_m", 0.30).value) ## 0.20
+            "ransac_threshold_m", 0.10).value) ## 0.20
         self.min_ransac_inliers = int(self.declare_parameter(
-            "min_ransac_inliers", 3).value) ## 4
+            "min_ransac_inliers", 4).value) ## 4
         self.min_ransac_inlier_ratio = float(self.declare_parameter(
-            "min_ransac_inlier_ratio", 0.20).value) ## 0.30
+            "min_ransac_inlier_ratio", 0.30).value) ## 0.30
         self.min_scale = float(self.declare_parameter("min_scale", 0.95).value)
         self.max_scale = float(self.declare_parameter("max_scale", 1.05).value)
         # self.dedup_yaw = math.radians(float(self.declare_parameter(
@@ -81,9 +88,9 @@ class MergeMapUwb(Node):
         self.min_pair_baseline = float(self.declare_parameter(
             "min_pair_baseline_m", 0.50).value)
         self.min_overlap_score = float(self.declare_parameter(
-            "min_overlap_score", 0.5).value) ## 0.2
+            "min_overlap_score", 0.5).value) ## 0.5 0.2
         self.min_overlap_coverage = float(self.declare_parameter(
-            "min_overlap_coverage", 0.2).value) ## 0.1 0.05
+            "min_overlap_coverage", 0.1).value) ## 0.1 0.05
         self.wall_tolerance = float(self.declare_parameter(
             "wall_tolerance_m", 0.10).value)
         self.refine_yaw = float(self.declare_parameter(
@@ -111,7 +118,11 @@ class MergeMapUwb(Node):
         self.map_padding = float(self.declare_parameter("map_padding_m", 1.0).value)
 
         self.maps = {}
+        # Each item is (tag_x_in_map, tag_y_in_map, range, tag_name).  Both
+        # tags observe the same physical anchor and are optimized together.
         self.samples = {ns: deque(maxlen=self.max_samples) for ns in self.robots}
+        self.last_sample_pose = {
+            ns: {"front": None, "back": None} for ns in self.robots}
         self.anchors = {}
         self.transforms = {}
         self.locked = False
@@ -130,8 +141,11 @@ class MergeMapUwb(Node):
                 OccupancyGrid, f"/{ns}/map",
                 lambda msg, robot=ns: self.on_map(msg, robot), qos))
             self.range_subs.append(self.create_subscription(
-                Range, f"/{ns}/{self.range_topic_suffix}",
-                lambda msg, robot=ns: self.on_range(msg, robot), 30))
+                Range, f"/{ns}/{self.front_range_topic_suffix}",
+                lambda msg, robot=ns: self.on_range(msg, robot, "front"), 30))
+            self.range_subs.append(self.create_subscription(
+                Range, f"/{ns}/{self.back_range_topic_suffix}",
+                lambda msg, robot=ns: self.on_range(msg, robot, "back"), 30))
 
         self.map_pub = self.create_publisher(OccupancyGrid, "/merge_map", qos)
         self.valid_pub = self.create_publisher(Bool, "/merge_map_uwb_valid", qos)
@@ -146,7 +160,13 @@ class MergeMapUwb(Node):
     def on_map(self, msg, robot):
         self.maps[robot] = msg
 
-    def on_range(self, msg, robot):
+    @staticmethod
+    def quaternion_yaw(q):
+        return math.atan2(
+            2.0 * (q.w * q.z + q.x * q.y),
+            1.0 - 2.0 * (q.y * q.y + q.z * q.z))
+
+    def on_range(self, msg, robot, tag):
         if not math.isfinite(msg.range) or msg.range <= 0.0:
             return
         map_frame = f"{robot}/map"
@@ -157,17 +177,27 @@ class MergeMapUwb(Node):
                 timeout=Duration(seconds=0.1))
         except Exception:
             return
-        sample = (tf.transform.translation.x, tf.transform.translation.y, float(msg.range))
+        base_x = float(tf.transform.translation.x)
+        base_y = float(tf.transform.translation.y)
+        base_yaw = self.quaternion_yaw(tf.transform.rotation)
+        signed_offset = self.tag_offset if tag == "front" else -self.tag_offset
+        tag_x = base_x + signed_offset * math.cos(base_yaw)
+        tag_y = base_y + signed_offset * math.sin(base_yaw)
+        sample = (tag_x, tag_y, float(msg.range), tag)
         q = self.samples[robot]
-        if q and math.hypot(sample[0] - q[-1][0], sample[1] - q[-1][1]) < self.min_motion:
+        previous = self.last_sample_pose[robot][tag]
+        if previous is not None and math.hypot(
+                sample[0] - previous[0], sample[1] - previous[1]) < self.min_motion:
             return
         q.append(sample)
+        self.last_sample_pose[robot][tag] = sample
 
     @staticmethod
     def estimate_anchor(samples):
         data = np.asarray(samples, dtype=np.float64)
         if len(data) < 3:
             return None
+        # Column 3 (front/back label in the deque) is intentionally ignored.
         p0, r0 = data[0, :2], data[0, 2]
         points, ranges = data[1:, :2], data[1:, 2]
         A = 2.0 * (points - p0)
@@ -596,8 +626,13 @@ class MergeMapUwb(Node):
         if any(ns not in self.maps for ns in self.robots):
             return
         for ns in self.robots:
-            estimate = self.estimate_anchor(self.samples[ns])
-            if estimate is not None and len(self.samples[ns]) >= self.min_samples:
+            numeric_samples = [sample[:3] for sample in self.samples[ns]]
+            front_count = sum(sample[3] == "front" for sample in self.samples[ns])
+            back_count = sum(sample[3] == "back" for sample in self.samples[ns])
+            min_per_tag = max(3, self.min_samples // 2)
+            estimate = self.estimate_anchor(numeric_samples)
+            if (estimate is not None and len(numeric_samples) >= self.min_samples
+                    and front_count >= min_per_tag and back_count >= min_per_tag):
                 self.anchors[ns] = estimate
         if any(ns not in self.anchors or self.anchors[ns][1] > self.max_anchor_rmse
                for ns in self.robots):

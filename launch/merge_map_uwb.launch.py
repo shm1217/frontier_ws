@@ -26,13 +26,18 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "robot_namespaces", default_value="['tb3_0','tb3_1']"),
         DeclareLaunchArgument(
-            "tb3_0_serial_port", default_value="/dev/ttyUSB_tb3_0"),
+            "tb3_0_front_serial_port", default_value="/dev/ttyUSB_tb3_0_front"),
         DeclareLaunchArgument(
-            "tb3_1_serial_port", default_value="/dev/ttyUSB_tb3_1"),
+            "tb3_0_back_serial_port", default_value="/dev/ttyUSB_tb3_0_back"),
+        DeclareLaunchArgument(
+            "tb3_1_front_serial_port", default_value="/dev/ttyUSB_tb3_1_front"),
+        DeclareLaunchArgument(
+            "tb3_1_back_serial_port", default_value="/dev/ttyUSB_tb3_1_back"),
+        DeclareLaunchArgument("tag_offset_from_base_m", default_value="0.15"),
         DeclareLaunchArgument("anchor_x", default_value="-6.0"),
         DeclareLaunchArgument("anchor_y", default_value="0.0"),
         DeclareLaunchArgument("publish_rate_hz", default_value="10.0"),
-        DeclareLaunchArgument("noise_stddev_m", default_value="0.0"),
+        DeclareLaunchArgument("noise_stddev_m", default_value="0.2"),
         DeclareLaunchArgument(
             "model_states_topic", default_value="/gazebo/model_states"),
         DeclareLaunchArgument(
@@ -43,23 +48,40 @@ def generate_launch_description():
             "initial_world_yaw", default_value="[0.0,0.0]"),
 
         ## 하드웨어 
+        # 로봇마다 앞/뒤 태그용 시리얼 노드를 하나씩 실행
         # ExecuteProcess(
         #     cmd=[
         #         "python3", ranger, "--ros-args",
-        #         "-r", "__node:=uwb_range_tb3_0_uwb",
-        #         "-p", ["serial_port:=", LaunchConfiguration("tb3_0_serial_port")],
+        #         "-r", "__node:=uwb_range_tb3_0_front",
+        #         "-p", ["serial_port:=", LaunchConfiguration("tb3_0_front_serial_port")],
         #         "-p", "anchor_index:=0",
-        #         "--remap", "uwb/range:=/tb3_0/uwb/range",
+        #         "-p", "tag_name:=front",
+        #         "--remap", "uwb/front/range:=/tb3_0/uwb/front/range",
         #     ],
         #     output="screen",
         # ),
         # ExecuteProcess(
         #     cmd=[
         #         "python3", ranger, "--ros-args",
-        #         "-r", "__node:=uwb_range_tb3_1_uwb",
-        #         "-p", ["serial_port:=", LaunchConfiguration("tb3_1_serial_port")],
+        #         "-r", "__node:=uwb_range_tb3_0_back",
+        #         "-p", ["serial_port:=", LaunchConfiguration("tb3_0_back_serial_port")],
         #         "-p", "anchor_index:=0",
-        #         "--remap", "uwb/range:=/tb3_1/uwb/range",
+        #         "-p", "tag_name:=back",
+        #         "--remap", "uwb/back/range:=/tb3_0/uwb/back/range",
+        #     ], output="screen"),
+        # ExecuteProcess(
+        #     cmd=["python3", ranger, "--ros-args",
+        #         "-r", "__node:=uwb_range_tb3_1_front",
+        #         "-p", ["serial_port:=", LaunchConfiguration("tb3_1_front_serial_port")],
+        #         "-p", "anchor_index:=0", "-p", "tag_name:=front",
+        #         "--remap", "uwb/front/range:=/tb3_1/uwb/front/range",
+        #     ], output="screen"),
+        # ExecuteProcess(
+        #     cmd=["python3", ranger, "--ros-args",
+        #         "-r", "__node:=uwb_range_tb3_1_back",
+        #         "-p", ["serial_port:=", LaunchConfiguration("tb3_1_back_serial_port")],
+        #         "-p", "anchor_index:=0", "-p", "tag_name:=back",
+        #         "--remap", "uwb/back/range:=/tb3_1/uwb/back/range",
         #     ],
         #     output="screen",
         # ),
@@ -79,6 +101,7 @@ def generate_launch_description():
         #         "-p", ["initial_world_x:=", LaunchConfiguration("initial_world_x")],
         #         "-p", ["initial_world_y:=", LaunchConfiguration("initial_world_y")],
         #         "-p", ["initial_world_yaw:=", LaunchConfiguration("initial_world_yaw")],
+        #         "-p", ["tag_offset_from_base_m:=", LaunchConfiguration("tag_offset_from_base_m")],
         #     ],
         #     output="screen",
         # ),
@@ -87,6 +110,7 @@ def generate_launch_description():
             cmd=[
                 "python3", merger, "--ros-args",
                 "-p", ["robot_namespaces:=", robots],
+                "-p", ["tag_offset_from_base_m:=", LaunchConfiguration("tag_offset_from_base_m")],
             ],
             output="screen",
         ),
