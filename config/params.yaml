@@ -48,6 +48,9 @@ frontier_multi:
     dynamic_max_angular_speed: 0.80
     dynamic_stop_distance: 0.32
     dynamic_slow_distance: 0.55
+    # 시뮬레이션에서 costmap/TF 갱신 순간의 짧은 지연은 허용하되,
+    # 오래된 속도 명령은 재사용하지 않는다.
+    dwb_cmd_timeout_s: 0.50
 
     # ---------------------------------------------------------
     # Stuck 상황 감지
@@ -91,6 +94,8 @@ frontier_multi:
     gate_goal_topic: "goal_assignment"
     map_delta_topic: "map_delta"
     gate_timeout_s: 3.0
+    gate_goal_switch_distance_m: 0.75
+    gate_goal_min_distance_m: 0.75
     map_delta_period_s: 1.0
     blacklist_ttl_s: 20.0
     blacklist_radius_m_: 1.5

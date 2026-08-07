@@ -15,6 +15,9 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     robot_id_ = this->declare_parameter<std::string>("robot_id", "robot1");
     map_topic_ = this->declare_parameter<std::string>("map_topic", "map");
     cmd_topic_ = this->declare_parameter<std::string>("cmd_topic", "cmd_vel");
+    dwb_cmd_topic_ = this->declare_parameter<std::string>("dwb_cmd_topic", "cmd_vel_dwb");
+    dynamic_cmd_topic_ = this->declare_parameter<std::string>("dynamic_cmd_topic", "cmd_vel_dynamic");
+    follow_path_action_name_ = this->declare_parameter<std::string>("follow_path_action", "follow_path");
     scan_topic_ = this->declare_parameter<std::string>("scan_topic", "scan");
 
     map_frame_  = this->declare_parameter<std::string>("map_frame", "map");
@@ -54,6 +57,11 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     // Laser mask
     laser_block_ttl_ = this->declare_parameter<double>("laser_block_ttl", 1.0);
     laser_inflation_radius_m_ = this->declare_parameter<double>("laser_inflation_radius_m", 0.12);
+    dynamic_max_linear_speed_ = this->declare_parameter<double>("dynamic_max_linear_speed", 0.08);
+    dynamic_max_angular_speed_ = this->declare_parameter<double>("dynamic_max_angular_speed", 0.8);
+    dynamic_stop_distance_ = this->declare_parameter<double>("dynamic_stop_distance", 0.32);
+    dynamic_slow_distance_ = this->declare_parameter<double>("dynamic_slow_distance", 0.55);
+    dwb_cmd_timeout_s_ = this->declare_parameter<double>("dwb_cmd_timeout_s", 0.50);
 
     // Stuck 됐을 때
     stuck_timeout_s_ = this->declare_parameter<double>("stuck_timeout_s", 3.0);
@@ -72,6 +80,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
 
     reserve_exclusion_radius_m_ = this->declare_parameter<double>("reserve_exclusion_radius_m", 2.0);
     reserve_ttl_s_ = this->declare_parameter<double>("reserve_ttl_s", 6.0);
+    reserve_refresh_period_s_ = this->declare_parameter<double>("reserve_refresh_period_s", 1.0);
     reserve_out_topic_ = this->declare_parameter<std::string>("reserve_out_topic", "/global_goal_reservation");
 
     path_marker_topic_     = this->declare_parameter<std::string>("path_marker_topic", "path_marker");
@@ -83,6 +92,10 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     gate_goal_topic_   = this->declare_parameter<std::string>("gate_goal_topic", "goal_assignment");
     map_delta_topic_   = this->declare_parameter<std::string>("map_delta_topic", "map_delta");
     gate_timeout_s_    = this->declare_parameter<double>("gate_timeout_s", 3.0);
+    gate_goal_switch_distance_m_ = this->declare_parameter<double>(
+        "gate_goal_switch_distance_m", 0.75);
+    gate_goal_min_distance_m_ = this->declare_parameter<double>(
+        "gate_goal_min_distance_m", 0.75);
     map_delta_period_s_= this->declare_parameter<double>("map_delta_period_s", 1.0);
 
     blacklist_ttl_s_ = this->declare_parameter<double>("blacklist_ttl_s", 20.0);
@@ -139,6 +152,12 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
 
 
     cmd_pub_ = this->create_publisher<geometry_msgs::msg::Twist>(cmd_topic_, 10);
+    dwb_cmd_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
+      dwb_cmd_topic_, 10,
+      std::bind(&FrontierExplorerMulti::onDwbCmd, this, std::placeholders::_1));
+    dynamic_cmd_pub_ = this->create_publisher<geometry_msgs::msg::Twist>(dynamic_cmd_topic_, 10);
+    follow_path_client_ = rclcpp_action::create_client<FollowPath>(
+      this, follow_path_action_name_);
 
     path_marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>(path_marker_topic_, 10);
     frontier_marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>(frontier_marker_topic_, 10);
@@ -160,11 +179,15 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
             &FrontierExplorerMulti::obsCallback,
             this, 
             std::placeholders::_1));
-    controller = std::make_shared<Controller>(this->get_clock());
+    dynamic_controller_ = std::make_shared<Controller>(this->get_clock());
 
     replan_check_period_s_ = this->declare_parameter<double>("replan_check_period_s", 0.5);
+    plan_retry_period_s_ = this->declare_parameter<double>("plan_retry_period_s", 0.75);
     min_commit_time_s_     = this->declare_parameter<double>("min_commit_time_s", 2.0);
     ig_drop_thresh_        = this->declare_parameter<double>("ig_drop_thresh", 0.10);
+    ig_drop_ratio_         = this->declare_parameter<double>("ig_drop_ratio", 0.40);
+    ig_drop_baseline_min_  = this->declare_parameter<double>("ig_drop_baseline_min", 0.20);
+    ig_replan_min_age_s_   = this->declare_parameter<double>("ig_replan_min_age_s", 2.0);
 
     timer_ = this->create_wall_timer(std::chrono::milliseconds(50),
       std::bind(&FrontierExplorerMulti::onTimer, this));
@@ -244,6 +267,30 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
           dist = std::hypot(dx, dy);
       }
 
+      // 병합 이후 gate goal은 world 좌표다. 로봇 바로 옆의 frontier를
+      // 다시 배정하면 짧은 FollowPath가 즉시 성공하고 재할당이 반복된다.
+      if (!using_local_map_ && has_pose_) {
+          const double robot_dist = std::hypot(
+              msg->pose.position.x - robot_.x,
+              msg->pose.position.y - robot_.y);
+          if (robot_dist < gate_goal_min_distance_m_) {
+              RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000,
+                  "[%s] Gate goal too close (%.2fm), ignoring",
+                  robot_id_.c_str(), robot_dist);
+              return;
+          }
+      }
+
+      // 실행 중인 유효 경로는 유지한다. Gate는 매 tick frontier 대표점을
+      // 다시 계산하므로 작은 지도 변화가 새 goal/cancel 폭주로 이어질 수 있다.
+      if (!path_.empty() && has_gate_goal_ &&
+          dist > gate_goal_switch_distance_m_) {
+          RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000,
+              "[%s] Gate proposed a different goal while path is active; keeping current goal",
+              robot_id_.c_str());
+          return;
+      }
+
       // ------------------------------------------------
       // timeout은 goal을 받을 때마다 무조건 갱신
       // (같은 goal이 유지 신호로 재전송되는 경우까지 포함)
@@ -251,7 +298,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
       last_gate_goal_time_ = this->now();
 
       // replan 트리거(new_gate_goal_)는 "진짜 새로운 위치"일 때만
-      if (!has_gate_goal_ || dist > 0.3) {
+      if (!has_gate_goal_ || dist > gate_goal_switch_distance_m_) {
           new_gate_goal_ = true;
 
           RCLCPP_WARN(
@@ -872,7 +919,10 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
   }
 
   std::vector<GridPose> reps;
-  reps.reserve(clusters.size());
+  // 긴 frontier 띠 하나가 DBSCAN cluster 하나가 되더라도 중앙점 하나만
+  // 남기지 않는다. 예약 충돌 시 같은 띠의 다른 구간을 선택할 수 있도록
+  // 서로 떨어진 복수 후보를 만든다.
+  reps.reserve(clusters.size() * 4);
   double res = map_.info.resolution;
 
   for (const auto& idxs : clusters) {
@@ -922,7 +972,28 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
       double d2 = dx*dx + dy*dy;
       if (d2 < best_d2) { best_d2 = d2; best = id; }
     }
+    std::vector<int> selected{best};
     reps.push_back(pts[best]);
+
+    const double candidate_spacing_m = std::max(0.75, reserve_exclusion_radius_m_ * 0.5);
+    constexpr size_t max_candidates_per_cluster = 8;
+    while (selected.size() < max_candidates_per_cluster) {
+      int farthest = -1;
+      double farthest_min_dist = -1.0;
+      for (int id : idxs) {
+        double min_dist = std::numeric_limits<double>::infinity();
+        for (int chosen : selected) {
+          min_dist = std::min(min_dist, distMeters(pts[id], pts[chosen]));
+        }
+        if (min_dist > farthest_min_dist) {
+          farthest_min_dist = min_dist;
+          farthest = id;
+        }
+      }
+      if (farthest < 0 || farthest_min_dist < candidate_spacing_m) break;
+      selected.push_back(farthest);
+      reps.push_back(pts[farthest]);
+    }
   } 
   return reps;
 }
@@ -969,6 +1040,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     );
 
     reserve_pub_->publish(ps);
+    last_reservation_pub_ = this->now();
   }
 
 
@@ -1010,6 +1082,9 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
 
     double max_penalty = 0.0;
     for (const auto& kv : reservations_) {
+        // 동시 선택 시 양쪽이 모두 양보하며 진동하지 않도록 이름이 작은
+        // 로봇의 예약만 우선권으로 인정한다 (tb3_0 > tb3_1).
+        if (kv.first > robot_id_) continue;
         double d = std::hypot(goal_x_g - kv.second.x, goal_y_g - kv.second.y);
         if (d >= reserve_exclusion_radius_m_) continue;
         // 예약 지점에 가까울수록 1.0에 가까운 페널티, 반경 경계에서 0.0
@@ -1106,9 +1181,15 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     }
   }
 
-    RCLCPP_WARN(this->get_logger(),
-    "[%s] pickBest: out_goal=(%d,%d)",
-    robot_id_.c_str(), out_goal.x, out_goal.y);
+    if (found) {
+      RCLCPP_WARN(this->get_logger(),
+          "[%s] pickBest: out_goal=(%d,%d)",
+          robot_id_.c_str(), out_goal.x, out_goal.y);
+    } else {
+      RCLCPP_WARN(this->get_logger(),
+          "[%s] pickBest: no reachable/unreserved candidate among %zu candidates",
+          robot_id_.c_str(), reps.size());
+    }
 
     return found;
   }
@@ -1121,7 +1202,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     return a;
   }
 
-  double FrontierExplorerMulti::minRange(double a_min, double a_max) {
+  double FrontierExplorerMulti::minRange(double a_min, double a_max) const {
     if (!has_scan_) return 1e9;
     double min_r = 1e9;
     for (size_t i = 0; i < last_scan_.ranges.size(); ++i) {
@@ -1135,6 +1216,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
   }
 
   void FrontierExplorerMulti::publishStop(const char* reason) {
+    clearPathAndCancel();
     geometry_msgs::msg::Twist cmd;
     cmd.linear.x = 0.0;
     cmd.angular.z = 0.0;
@@ -1226,25 +1308,136 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
   }
 
   void FrontierExplorerMulti::followPathStep() {
+    if (path_.empty() || path_sent_to_dwb_) return;
+    if (!follow_path_client_->action_server_is_ready()) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+          "[%s] DWB FollowPath action server '%s' is not ready",
+          robot_id_.c_str(), follow_path_action_name_.c_str());
+      return;
+    }
 
-    if (path_.empty()) return;
+    const auto path_id = ++active_path_id_;
+    FollowPath::Goal goal;
+    goal.path = makeNavPath();
+    goal.controller_id = "FollowPath";
+    goal.goal_checker_id = "general_goal_checker";
+    auto options = rclcpp_action::Client<FollowPath>::SendGoalOptions();
+    options.goal_response_callback = [this, path_id](FollowPathGoalHandle::SharedPtr handle) {
+      if (!handle) {
+        if (path_id == active_path_id_) path_sent_to_dwb_ = false;
+        RCLCPP_ERROR(get_logger(), "[%s] DWB rejected FollowPath goal", robot_id_.c_str());
+        return;
+      }
+      if (path_id == active_path_id_) follow_path_goal_handle_ = handle;
+    };
+    options.result_callback = [this, path_id](const FollowPathGoalHandle::WrappedResult & result) {
+      if (path_id != active_path_id_) return;
+      follow_path_goal_handle_.reset();
+      path_sent_to_dwb_ = false;
+      path_.clear();
+      has_goal_ = false;
+      if (result.code == rclcpp_action::ResultCode::SUCCEEDED) {
+        // 도착한 gate goal을 다음 timer에서 다시 계획하지 않는다.
+        has_gate_goal_ = false;
+        new_gate_goal_ = false;
+      }
+      if (result.code != rclcpp_action::ResultCode::SUCCEEDED) {
+        RCLCPP_WARN(get_logger(), "[%s] DWB FollowPath ended with code %d",
+                    robot_id_.c_str(), static_cast<int>(result.code));
+      }
+    };
+    path_sent_to_dwb_ = true;
+    follow_path_client_->async_send_goal(goal, options);
+  }
 
+  void FrontierExplorerMulti::onDwbCmd(
+      const geometry_msgs::msg::Twist::SharedPtr msg) {
+    last_dwb_cmd_ = *msg;
+    last_dwb_cmd_time_ = this->now();
+  }
 
-    wp_idx_ = findNearestIndexOnPath(path_, wp_idx_, 25);
-    int target_idx = std::min(wp_idx_ + 7, (int)path_.size() - 1);
-    const auto& target = path_[target_idx];
-    // auto [tx, ty] = gridToWorld(target.x, target.y); 
-    controller -> goal_update(gridToWorld(target.x, target.y));
+  void FrontierExplorerMulti::cancelDwbGoal() {
+    ++active_path_id_;
+    path_sent_to_dwb_ = false;
+    if (follow_path_goal_handle_) {
+      follow_path_client_->async_cancel_goal(follow_path_goal_handle_);
+      follow_path_goal_handle_.reset();
+    }
+  }
 
-    geometry_msgs::msg::Twist cmd;
-    cmd = controller -> control_cmd_update();
-    // RCLCPP_INFO(this->get_logger(), " controller의 cmd: (%f, %f)", cmd.linear, cmd.angular);
+  void FrontierExplorerMulti::clearPathAndCancel() {
+    if (path_.empty() && !path_sent_to_dwb_ && !follow_path_goal_handle_) return;
+    cancelDwbGoal();
+    path_.clear();
+    wp_idx_ = 0;
+    has_goal_ = false;
+  }
+
+  nav_msgs::msg::Path FrontierExplorerMulti::makeNavPath() const {
+    nav_msgs::msg::Path nav_path;
+    nav_path.header.stamp = this->now();
+    nav_path.header.frame_id = map_frame_;
+    nav_path.poses.reserve(path_.size());
+    for (size_t i = 0; i < path_.size(); ++i) {
+      geometry_msgs::msg::PoseStamped pose;
+      pose.header = nav_path.header;
+      const auto xy = gridToWorld(path_[i].x, path_[i].y);
+      pose.pose.position.x = xy.first;
+      pose.pose.position.y = xy.second;
+      double yaw = robot_.yaw;
+      if (i + 1 < path_.size()) {
+        const auto next = gridToWorld(path_[i + 1].x, path_[i + 1].y);
+        yaw = std::atan2(next.second - xy.second, next.first - xy.first);
+      }
+      pose.pose.orientation.z = std::sin(0.5 * yaw);
+      pose.pose.orientation.w = std::cos(0.5 * yaw);
+      nav_path.poses.push_back(std::move(pose));
+    }
+    return nav_path;
+  }
+
+  geometry_msgs::msg::Twist FrontierExplorerMulti::applyDynamicSafetyFilter(
+      geometry_msgs::msg::Twist cmd) const {
+    const double direction_range = cmd.linear.x >= 0.0
+        ? minRange(-0.45, 0.45) : minRange(2.4, 3.14);
+    if (direction_range < dynamic_stop_distance_) return geometry_msgs::msg::Twist();
+    if (direction_range < dynamic_slow_distance_) {
+      const double scale = (direction_range - dynamic_stop_distance_) /
+          (dynamic_slow_distance_ - dynamic_stop_distance_);
+      cmd.linear.x *= clampd(scale, 0.0, 1.0);
+    }
+    cmd.linear.x = clampd(cmd.linear.x, -dynamic_max_linear_speed_, dynamic_max_linear_speed_);
+    cmd.angular.z = clampd(cmd.angular.z, -dynamic_max_angular_speed_, dynamic_max_angular_speed_);
+    return cmd;
+  }
+
+  bool FrontierExplorerMulti::updateDynamicController() {
+    // detect_node의 동적 장애물 좌표는 world 기준이다. 병합 전 local-map
+    // fallback에서는 robot pose와 좌표계가 다르므로 override하지 않는다.
+    if (path_.empty() || using_local_map_) return false;
+    size_t nearest = 0;
+    double best_distance = std::numeric_limits<double>::infinity();
+    for (size_t i = 0; i < path_.size(); ++i) {
+      const auto xy = gridToWorld(path_[i].x, path_[i].y);
+      const double distance = std::hypot(xy.first - robot_.x, xy.second - robot_.y);
+      if (distance < best_distance) {
+        best_distance = distance;
+        nearest = i;
+      }
+    }
+    const size_t target = std::min(nearest + 7, path_.size() - 1);
+    dynamic_controller_->pose_update(robot_.x, robot_.y, robot_.yaw);
+    dynamic_controller_->goal_update(gridToWorld(path_[target].x, path_[target].y));
+    if (!dynamic_controller_->has_collision_risk()) return false;
+
+    auto cmd = applyDynamicSafetyFilter(dynamic_controller_->control_cmd_update());
+    dynamic_cmd_pub_->publish(cmd);
     cmd_pub_->publish(cmd);
-
+    return true;
   }
 
   void FrontierExplorerMulti::obsCallback(const frontier_ws::msg::DynamicObstacle::SharedPtr msg){
-    controller -> obs_update(msg);
+    dynamic_controller_->obs_update(msg);
   }
 
   bool FrontierExplorerMulti::isRobotStuck() {
@@ -1280,10 +1473,36 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     if ((now - last_replan_check_).seconds() < replan_check_period_s_) return false;
     last_replan_check_ = now;
 
-    if ((now - goal_commit_start_).seconds() < min_commit_time_s_) return false;
+    // 예약 충돌은 commit time보다 먼저 해소한다. 동시 선택 시 우선순위가
+    // 낮은 로봇이 예약 메시지를 받는 즉시 다른 후보로 이동한다.
+    if (!has_gate_goal_ && !using_local_map_) {
+      auto [wx, wy] = gridToWorld(current_goal_.x, current_goal_.y);
+      double gx, gy;
+      if (toGlobal(wx, wy, gx, gy) && reservePenaltyGlobal(gx, gy) > 0.5) {
+        RCLCPP_WARN(this->get_logger(),
+            "[%s][REPLAN] higher-priority robot reserved this goal", robot_id_.c_str());
+        return true;
+      }
+    }
 
     int ig_radius = (int)std::ceil(info_gain_radius_m_ / map_.info.resolution);
     double ig = infoGainAround(current_goal_, ig_radius);
+    const double goal_age_s = (now - goal_commit_start_).seconds();
+
+    // 목표 선정 당시보다 unknown 비율이 크게 감소했다면 다른 로봇이 먼저
+    // 탐사했거나 현재 센서로 이미 밝혀진 곳이므로 끝까지 가지 않는다.
+    const bool ig_sharply_dropped =
+        goal_age_s >= ig_replan_min_age_s_ &&
+        goal_initial_ig_ >= ig_drop_baseline_min_ &&
+        ig <= goal_initial_ig_ * ig_drop_ratio_;
+    if (ig_sharply_dropped) {
+        RCLCPP_WARN(this->get_logger(),
+            "[%s][REPLAN] goal IG consumed: %.2f -> %.2f (threshold %.0f%%)",
+            robot_id_.c_str(), goal_initial_ig_, ig, 100.0 * ig_drop_ratio_);
+        return true;
+    }
+
+    if (goal_age_s < min_commit_time_s_) return false;
 
     if (ig < ig_drop_thresh_) {
         RCLCPP_WARN(this->get_logger(),
@@ -1292,19 +1511,6 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
         return true;
     }
 
-    // Gate goal일 때는 예약 충돌 체크는 Gate가 이미 관리하므로 스킵
-    if (has_gate_goal_) return false;
-
-    auto [wx, wy] = gridToWorld(current_goal_.x, current_goal_.y);
-    double gx, gy;
-    if (!toGlobal(wx, wy, gx, gy)) return false;
-
-    double rp = reservePenaltyGlobal(gx, gy);
-
-    if (rp > 0.5) {
-        RCLCPP_WARN(this->get_logger(), "[%s][REPLAN] 내 목표 지점이 선점됨! 경로 재설정.", robot_id_.c_str());
-        return true;
-    }
     return false;
   }
 
@@ -1506,9 +1712,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
         // 전환 발생 -> frame/좌표계가 바뀌므로 기존 경로/상태 폐기
         RCLCPP_WARN(get_logger(), "[%s] map source switch -> %s",
                     robot_id_.c_str(), want_local ? "LOCAL" : "MERGE");
-        path_.clear();
-        wp_idx_ = 0;
-        has_goal_ = false;
+        clearPathAndCancel();
         has_gate_goal_ = false;
         blacklisted_goals_.clear();
         prev_map_data_.clear();  // map_delta 계산도 리셋
@@ -1586,8 +1790,6 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
         return;
     }
 
-    controller -> pose_update(robot_.x, robot_.y, robot_.yaw);
-
     publishMapDelta();
 
     GridPose robot_g = worldToGrid(robot_.x, robot_.y);
@@ -1597,19 +1799,9 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     // -------------------------------------------------
     double front = minRange(-0.3, 0.3);
 
-    if (has_scan_ && front < avoid_enter_dist_ && has_goal_) {
-        avoiding_ = true;
-        path_.clear();
-    }
-
-    if (avoiding_) {
-        if (has_scan_ && front > avoid_exit_dist_) {
-            avoiding_ = false;
-        } else {
-            publishAvoidCmd();
-            return;
-        }
-    }
+    // 정적 장애물 회피는 scan obstacle layer를 사용하는 DWB가 담당한다.
+    // 여기서 별도 cmd_vel을 발행하면 DWB와 명령이 경쟁하므로 사용하지 않는다.
+    (void)front;
 
     // -------------------------------------------------
     // masks
@@ -1622,10 +1814,14 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     // path follow
     // -------------------------------------------------
     if (!path_.empty()) {
+        // Gate 없는 분산 탐사에서는 현재 목표 예약을 TTL보다 빠르게 갱신한다.
+        if (!using_local_map_ &&
+            (this->now() - last_reservation_pub_).seconds() >= reserve_refresh_period_s_) {
+            publishReservationGlobal(current_goal_);
+        }
         if (new_gate_goal_) {
             RCLCPP_WARN(get_logger(), "[%s] 새 Gate goal 수신 -> 기존 경로 폐기", robot_id_.c_str());
-            path_.clear();
-            wp_idx_ = 0;
+            clearPathAndCancel();
             new_gate_goal_ = false;
         }
         else {
@@ -1635,8 +1831,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
             if (need_replan) {
                 RCLCPP_WARN(get_logger(), "[%s] replanning...", robot_id_.c_str());
                 addToBlacklist(current_goal_);   // 3번 항목에서 교체
-                path_.clear();
-                wp_idx_ = 0;
+                clearPathAndCancel();
 
                 if (has_gate_goal_) {
                     // IG가 다 빠진 gate goal은 버리고 로컬 fallback으로 전환
@@ -1649,11 +1844,25 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
             }
             else {
                 wp_idx_ = findNearestIndexOnPath(path_, wp_idx_, 25);
+                if (updateDynamicController()) return;
                 followPathStep();
+                if ((this->now() - last_dwb_cmd_time_).seconds() <= dwb_cmd_timeout_s_) {
+                  cmd_pub_->publish(last_dwb_cmd_);
+                } else {
+                  geometry_msgs::msg::Twist stop;
+                  cmd_pub_->publish(stop);
+                  RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                      "[%s] stale DWB cmd_vel; holding stop", robot_id_.c_str());
+                }
                 return;
             }
         }
     }
+
+    // 계획 실패 상태에서 20 Hz로 같은 frontier/goal을 반복 계산하고
+    // stop 로그를 쏟지 않도록 재시도 주기를 제한한다.
+    if ((this->now() - last_plan_attempt_).seconds() < plan_retry_period_s_) return;
+    last_plan_attempt_ = this->now();
 
         // =================================================
         // Gate goal 확인
@@ -1730,6 +1939,8 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
             current_goal_ = goal_g;
             has_goal_ = true;
             goal_commit_start_ = this->now();
+            goal_initial_ig_ = infoGainAround(
+                current_goal_, (int)std::ceil(info_gain_radius_m_ / map_.info.resolution));
 
             if (enable_viz_) publishPathMarker(path_);
 
@@ -1892,6 +2103,8 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     has_goal_ = true;
 
     goal_commit_start_ = this->now();
+    goal_initial_ig_ = infoGainAround(
+        current_goal_, (int)std::ceil(info_gain_radius_m_ / map_.info.resolution));
 
     // 병합 전에는 공통 world 좌표계가 없으므로 글로벌 예약을 발행하지 않는다.
     if (!using_local_map_) {

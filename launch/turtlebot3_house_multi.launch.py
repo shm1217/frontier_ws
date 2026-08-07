@@ -80,17 +80,17 @@ def generate_launch_description():
     world_arg = LaunchConfiguration("world")
 
     robots = load_robots(os.path.join(pkg_this, "config", "robots.yaml"))
-    # default_world = first_existing([
-    # "/home/hdzggg/turtlebot3_simulations/install/turtlebot3_gazebo/share/turtlebot3_gazebo/worlds/turtlebot3_house.world",
-    # "/home/hdzggg/turtlebot3_simulations/turtlebot3_gazebo/worlds/turtlebot3_house.world",
-    # ])
     default_world = first_existing([
-        os.path.join(pkg_tb3, "worlds", "turtlebot3_random2.world"),
-        os.path.join(prefix_tb3, "share", "turtlebot3_gazebo", "worlds", "turtlebot3_random2.world"),
-        "/home/hdzggg/turtlebot3_simulations/install/turtlebot3_gazebo/share/turtlebot3_gazebo/worlds/turtlebot3_random2.world",
-        "/home/hdzggg/turtlebot3_simulations/turtlebot3_gazebo/worlds/turtlebot3_random2.world",
-        os.path.join(pkg_tb3, "worlds", "turtlebot3_house.world"),
+    "/home/hdzggg/turtlebot3_simulations/install/turtlebot3_gazebo/share/turtlebot3_gazebo/worlds/turtlebot3_house.world",
+    "/home/hdzggg/turtlebot3_simulations/turtlebot3_gazebo/worlds/turtlebot3_house.world",
     ])
+    # default_world = first_existing([
+    #     os.path.join(pkg_tb3, "worlds", "turtlebot3_random2.world"),
+    #     os.path.join(prefix_tb3, "share", "turtlebot3_gazebo", "worlds", "turtlebot3_random2.world"),
+    #     "/home/hdzggg/turtlebot3_simulations/install/turtlebot3_gazebo/share/turtlebot3_gazebo/worlds/turtlebot3_random2.world",
+    #     "/home/hdzggg/turtlebot3_simulations/turtlebot3_gazebo/worlds/turtlebot3_random2.world",
+    #     os.path.join(pkg_tb3, "worlds", "turtlebot3_house.world"),
+    # ])
 
     tb3_model = os.environ.get("TURTLEBOT3_MODEL", "burger")
     sdf_path = os.path.join(pkg_tb3, "models", f"turtlebot3_{tb3_model}", "model.sdf")
