@@ -120,8 +120,10 @@ DetectNode::DetectNode() : Node("detect_node"), tf_buffer(this->get_clock()), tf
     R(1, 1) = R_sigma * R_sigma;
     R(2, 2) = R_sigma * R_sigma;
 
-    std::string best1_path = "/home/hdzggg/frontier_ws/appearance_file/female.png";
-    std::string best2_path = "/home/hdzggg/frontier_ws/appearance_file/male.png";
+    std::string package_path =
+    ament_index_cpp::get_package_share_directory("frontier_ws");
+    std::string best1_path = package_path + "/appearance_file/female.png";
+    std::string best2_path = package_path + "/appearance_file/male.png";
     represent.push_back({ 0, best1_path, Eigen::VectorXf(), sensor_msgs::msg::Image() });
     represent.push_back({ 1, best2_path, Eigen::VectorXf(), sensor_msgs::msg::Image() });
 }
