@@ -208,7 +208,7 @@ def generate_launch_description():
             "image_topic": f"/{ns}/camera/camera/color/image_raw",
             "camera_info_topic": f"/{ns}/camera/camera/color/camera_info",
             "camera_link_frame": f"{ns}/camera_link",
-            "obstacle_frame": "world",
+            "obstacle_frame": f"{ns}/map",
             "camera_optical_frame": f"{ns}/camera_color_optical_frame",
         }] # True: /clock 사용, ros bag 사용할 때, False: system time 사용
     )

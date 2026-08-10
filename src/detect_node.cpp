@@ -66,7 +66,7 @@ DetectNode::DetectNode() : Node("detect_node"), tf_buffer(this->get_clock()), tf
     camera_init_frame_ = this->declare_parameter<std::string>(
         "camera_init_frame", scoped_frame(robot_id_, "camera_init"));
     obstacle_frame_ = this->declare_parameter<std::string>(
-        "obstacle_frame", "world");
+        "obstacle_frame", scoped_frame(robot_id_, "map"));
     camera_optical_frame_ = this->declare_parameter<std::string>(
         "camera_optical_frame", scoped_frame(robot_id_, "camera_color_optical_frame"));
     camera_debug_frame_ = this->declare_parameter<std::string>(
@@ -829,6 +829,8 @@ void DetectNode::tracking(std::vector<yolo_track> &track) // track을 id 포함�
         auto color = get_color(id);
         visualize_box(res, t.boxsize, color, id, "obj_box");
         frontier_ws::msg::DynamicObstacle obs;
+        obs.header.stamp = rclcpp::Time(res.stamp, RCL_ROS_TIME);
+        obs.header.frame_id = obstacle_frame_;
         obs.track_id = id;
         obs.x = res.x_;
         obs.y = res.y_;
@@ -1183,6 +1185,8 @@ void DetectNode::calculate_cost()
             k_track.prev = res;
 
             frontier_ws::msg::DynamicObstacle obs;
+            obs.header.stamp = rclcpp::Time(res.stamp, RCL_ROS_TIME);
+            obs.header.frame_id = obstacle_frame_;
             obs.track_id = best_track_id;
             obs.x = res.x_;
             obs.y = res.y_;

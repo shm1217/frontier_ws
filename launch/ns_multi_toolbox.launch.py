@@ -52,6 +52,7 @@ def launch_setup(context, *args, **kwargs):
         "scan_topic":  f"/{ns}/scan",
 
         "resolution": 0.05,
+        "scan_queue_size": 5,
 
         "max_laser_range": 8.0,
         "min_laser_range": 0.12,
@@ -182,7 +183,7 @@ def launch_setup(context, *args, **kwargs):
                 "image_topic": f"/{ns}/camera/camera/color/image_raw",
                 "camera_info_topic": f"/{ns}/camera/camera/color/camera_info",
                 "camera_link_frame": f"{ns}/camera_link",
-                "obstacle_frame": "world",
+                "obstacle_frame": f"{ns}/map",
                 "camera_optical_frame": f"{ns}/camera_color_optical_frame",
             }],
         )

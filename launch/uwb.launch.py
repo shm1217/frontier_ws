@@ -204,7 +204,7 @@ def launch_setup(context, *args, **kwargs):
                 f"{ns}/camera_link",
 
             "obstacle_frame":
-                "world",
+                f"{ns}/map",
 
             "camera_optical_frame":
                 f"{ns}/camera_color_optical_frame",

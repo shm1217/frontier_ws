@@ -1437,7 +1437,45 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
   }
 
   void FrontierExplorerMulti::obsCallback(const frontier_ws::msg::DynamicObstacle::SharedPtr msg){
-    dynamic_controller_->obs_update(msg);
+    if (msg->header.frame_id.empty() || msg->header.frame_id == map_frame_) {
+      dynamic_controller_->obs_update(msg);
+      return;
+    }
+
+    try {
+      const auto tf = tf_buffer_->lookupTransform(
+          map_frame_, msg->header.frame_id, tf2::TimePointZero,
+          tf2::durationFromSec(tf_timeout_s_));
+
+      geometry_msgs::msg::PointStamped position_in, position_out;
+      position_in.header = msg->header;
+      position_in.point.x = msg->x;
+      position_in.point.y = msg->y;
+      position_in.point.z = msg->z;
+      tf2::doTransform(position_in, position_out, tf);
+
+      geometry_msgs::msg::Vector3Stamped velocity_in, velocity_out;
+      velocity_in.header = msg->header;
+      velocity_in.vector.x = msg->vx;
+      velocity_in.vector.y = msg->vy;
+      velocity_in.vector.z = msg->vz;
+      tf2::doTransform(velocity_in, velocity_out, tf);
+
+      auto transformed = std::make_shared<frontier_ws::msg::DynamicObstacle>(*msg);
+      transformed->header.frame_id = map_frame_;
+      transformed->x = position_out.point.x;
+      transformed->y = position_out.point.y;
+      transformed->z = position_out.point.z;
+      transformed->vx = velocity_out.vector.x;
+      transformed->vy = velocity_out.vector.y;
+      transformed->vz = velocity_out.vector.z;
+      dynamic_controller_->obs_update(transformed);
+    } catch (const tf2::TransformException &ex) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "[%s] obstacle TF unavailable (%s -> %s): %s",
+          robot_id_.c_str(), msg->header.frame_id.c_str(), map_frame_.c_str(), ex.what());
+    }
   }
 
   bool FrontierExplorerMulti::isRobotStuck() {
