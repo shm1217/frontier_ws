@@ -5,7 +5,7 @@
 
 
 ```bash
-ros2 launch frontier_ws turtlebot3_house_multi.launch.pyㅊ
+ros2 launch frontier_ws turtlebot3_house_multi.launch.py
 # TODO: 수정 필요
 ```
 
