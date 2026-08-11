@@ -57,17 +57,17 @@ static inline const int dy4[4] = { 0, 0, 1,-1};
 
 class FrontierExplorerMulti : public rclcpp::Node {
 public:
-    FrontierExplorerMulti(); // 생성자
+    FrontierExplorerMulti(); 
 
 private:
     // ---------------------------------------------------------
-    // 1. 초기화 관련 함수 
+    // 초기화 관련 함수 
     // ---------------------------------------------------------
     void declare_params();
     void setup_ros_interfaces();
 
     // ---------------------------------------------------------
-    // 2. 콜백 함수들
+    // 콜백 함수
     // ---------------------------------------------------------
     // (1) 좌표 변환 
     bool inBounds(int x, int y) const;
@@ -95,9 +95,11 @@ private:
                                   const std::vector<uint8_t>& reachable) const;
 
     // (4) 장애물 마스크
-    std::vector<uint8_t> buildObstacleInflatedMask() const;
+    std::vector<uint8_t> buildObstacleInflatedMask(bool include_laser = true) const;
     std::vector<uint8_t> buildObstacleRawMask() const;
     std::vector<uint8_t> buildBlockedMask() const;
+    void applyOtherRobotFootprints(std::vector<uint8_t>& mask);
+    bool hasOtherRobotOnCurrentPath();
 
     // (5) 경로 계획 및 dbscan clustering 
     std::vector<GridPose> astar(const GridPose &start, const GridPose &goal,
@@ -112,7 +114,10 @@ private:
     double infoGainAround(const GridPose& g, int radius_cells) const;
     void publishReservationGlobal(const GridPose& goal_local_g);
     void onReservePoint(const geometry_msgs::msg::PoseStamped& msg, const std::string& sender_id);
+    void publishRobotPositionGlobal();
+    void onRobotPosition(const geometry_msgs::msg::PoseStamped& msg, const std::string& sender_id);
     double reservePenaltyGlobal(double goal_x_g, double goal_y_g);
+    bool hasHigherPriorityReservation(double goal_x_g, double goal_y_g);
 
     bool pickBestFrontierByUtility(
     const GridPose &robot_g,
@@ -125,10 +130,8 @@ private:
     );
 
 
-    static double normAngle(double a);
     double minRange(double a_min, double a_max) const;
     void publishStop(const char* reason);
-    void publishAvoidCmd();
     int findNearestIndexOnPath(const std::vector<GridPose>& path, int start_idx, int window);
     void followPathStep();
     bool updateDynamicController();
@@ -162,9 +165,8 @@ private:
     bool isBlacklisted(const GridPose& g) const;
 
     // ---------------------------------------------------------
-    // 3. 멤버 변수들 
+    // 3. 멤버 변수들
     // ---------------------------------------------------------
-    // ---------- ROS interfaces ----------
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_pub_;
@@ -188,7 +190,6 @@ private:
     double blacklist_ttl_s_{20.0};
     double blacklist_radius_m_ = 1.5;
 
-    // ---------- Params / topics ----------
     std::string robot_id_;
     std::string map_topic_, cmd_topic_, dwb_cmd_topic_, dynamic_cmd_topic_, scan_topic_;
     std::string follow_path_action_name_;
@@ -206,34 +207,24 @@ private:
     double inflation_radius_m_ = 0.2;
     double frontier_search_radius_m_ = 8.0;
 
-    double max_lin_vel_ = 0.2;
-    double max_ang_vel_ = 0.8;
-    double reach_dist_ = 0.3;
-
-    bool avoiding_ = false;           // 초기화 필수
     double avoid_enter_dist_ = 0.3;
-    double avoid_exit_dist_ = 0.45;
 
     double frontier_clearance_m_ = 0.15;
     double path_clearance_m_ = 0.1;
 
     int keep_open_cells_ = 2;
 
-    double e_prev_ = 0.0;             // 초기화 필수
-    double Kp = 0.8, Kd = 0.1;
-
-    // DBSCAN
     double dbscan_eps_m_ = 0.3;
     int dbscan_min_pts_ = 5;
-    bool use_dbscan_ = true;          // 초기화 필수
+    bool use_dbscan_ = true;          
 
-    // Laser mask
     sensor_msgs::msg::LaserScan last_scan_;
-    bool has_scan_ = false;           // 초기화 필수
+    bool has_scan_ = false;        
     std::vector<uint8_t> laser_blocked_;
     std::chrono::steady_clock::time_point last_laser_update_;
     double laser_block_ttl_ = 1.0;
     double laser_inflation_radius_m_ = 0.15;
+    double laser_obstacle_max_range_ = 0.40;
 
     std::shared_ptr<Controller> dynamic_controller_;
     geometry_msgs::msg::Twist last_dwb_cmd_;
@@ -244,28 +235,23 @@ private:
     double dynamic_stop_distance_ = 0.32;
     double dynamic_slow_distance_ = 0.55;
 
-    // Stuck
     double stuck_timeout_s_{5.0};
     double stuck_min_move_m_{0.02};
     rclcpp::Time last_progress_time_{0, 0, RCL_ROS_TIME};
-    double last_progress_x_ = 0.0;    // 초기화 필수
-    double last_progress_y_ = 0.0;    // 초기화 필수
-    bool progress_inited_ = false;    // 초기화 필수
+    double last_progress_x_ = 0.0;    
+    double last_progress_y_ = 0.0;    
+    bool progress_inited_ = false;    
 
-    // Map / pose / path
     nav_msgs::msg::OccupancyGrid map_;
-    bool has_map_ = false;            //
+    bool has_map_ = false;            
 
     WorldPose robot_;
-    bool has_pose_ = false;           // 초기화 필수
+    bool has_pose_ = false;           
 
     std::vector<GridPose> path_;
-    int wp_idx_ = 0;                  // 초기화 필수
+    int wp_idx_ = 0;                 
 
-    // utility
-    double utility_radius_m_ = 1.0;
     double info_gain_radius_m_ = 1.5;
-
     double alpha_ = 1.0, beta_ = 1.0, delta_ = 1.0;
 
     double reserve_exclusion_radius_m_ = 1.5;
@@ -273,10 +259,12 @@ private:
     double reserve_refresh_period_s_ = 1.0;
     rclcpp::Time last_reservation_pub_{0, 0, RCL_ROS_TIME};
 
-    // reserve point topics
     std::string reserve_out_topic_;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr reserve_pub_;
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr reserve_sub_;
+    std::string robot_position_topic_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr robot_position_pub_;
+    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr robot_position_sub_;
 
     struct ReservedGoal {
         std::string src; 
@@ -285,9 +273,14 @@ private:
     };
     
     std::unordered_map<std::string, ReservedGoal> reservations_;
+    std::unordered_map<std::string, ReservedGoal> other_robot_positions_;
+    rclcpp::Time last_robot_position_pub_{0, 0, RCL_ROS_TIME};
+    double robot_position_ttl_s_ = 1.0;
+    double robot_position_period_s_ = 0.2;
+    double other_robot_radius_m_ = 0.32;
 
     GridPose current_goal_;
-    bool has_goal_ = false;           // 초기화 필수
+    bool has_goal_ = false;          
 
     rclcpp::Time last_replan_check_{0,0,RCL_ROS_TIME};
     double replan_check_period_s_ = 2.0;  
@@ -303,7 +296,6 @@ private:
     double ig_drop_baseline_min_ = 0.20;
     double ig_replan_min_age_s_ = 2.0;
 
-    // ---- Gate 관련 ----
     std::string gate_goal_topic_;
     std::string map_delta_topic_;
     double gate_timeout_s_{10.0};
@@ -320,17 +312,15 @@ private:
     rclcpp::Time last_gate_goal_time_{0,0,RCL_ROS_TIME};
     rclcpp::Time last_delta_pub_time_{0,0,RCL_ROS_TIME};
 
-    std::vector<int8_t> prev_map_data_; // delta 계산용 이전 맵
+    std::vector<int8_t> prev_map_data_;
 
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr explore_done_sub_;
     bool exploration_done_{false};
 
 
-    // 추가 | A* 연속 실패 카운트용
     int gate_plan_fail_count_{0};
     int gate_plan_fail_max_{3};
 
-    // 로컬 맵 폴백용
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr local_map_sub_;
     nav_msgs::msg::OccupancyGrid merge_map_;
     nav_msgs::msg::OccupancyGrid local_map_;
@@ -345,7 +335,6 @@ private:
     void onLocalMap(const nav_msgs::msg::OccupancyGrid::SharedPtr msg);
     void selectActiveMap();
 
-    // dynamic obstacle controller
     rclcpp::Subscription<frontier_ws::msg::DynamicObstacle>::SharedPtr obs_sub_;
     void obsCallback(const frontier_ws::msg::DynamicObstacle::SharedPtr msg);
 

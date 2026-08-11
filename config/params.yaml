@@ -1,4 +1,4 @@
-frontier_multi:
+frontier_multi_uwb:
   ros__parameters:
     # ---------------------------------------------------------
     # 토픽 및 프레임 설정
@@ -110,7 +110,7 @@ frontier_multi:
     # ---------------------------------------------------------
     # 시각화 (Visualization)
     # ---------------------------------------------------------
-    enable_viz: true
+    enable_viz: false
     path_marker_topic: "path_marker"
     frontier_marker_topic: "frontier_markers"
     infl_marker_topic: "inflation_marker"

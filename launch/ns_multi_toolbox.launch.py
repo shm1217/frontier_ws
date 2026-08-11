@@ -12,36 +12,34 @@ from nav2_common.launch import RewrittenYaml
 
 def launch_setup(context, *args, **kwargs):
     use_sim_time_str = LaunchConfiguration("use_sim_time").perform(context)
-    use_sim_time = use_sim_time_str.lower() in ("true", "1", "yes")
+    use_sim_time = use_sim_time_str.lower() in ("tsrue", "1", "yes")
     use_sim_time_str = "True" if use_sim_time else "False"
 
     pkg_dir = get_package_share_directory('frontier_ws')
     param_file = os.path.join(pkg_dir, 'config', 'params.yaml')
     dwb_param_file = os.path.join(pkg_dir, 'config', 'dwb_controller.yaml')
 
-    # 이 launch 파일을 실행할 때 지정하는 로봇 네임스페이스 (예: tb3_0)
     ns = LaunchConfiguration("robot_namespace").perform(context)
 
     actions = []
-
     # =========================================================
     # 1) base -> scan static TF
     # =========================================================
-    actions.append(Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        name=f"{ns}_base_to_scan",
-        output="screen",
-        arguments=[
-            "--x", "0.0", "--y", "0.0", "--z", "0.20",
-            "--yaw", "0.0", "--pitch", "0.0", "--roll", "0.0",
-            "--frame-id", f"{ns}/base_footprint",
-            "--child-frame-id", f"{ns}/base_scan",
-        ],
-    ))
+    # actions.append(Node(
+    #    package="tf2_ros",
+    #    executable="static_transform_publisher",
+    #    name=f"{ns}_base_to_scan",
+    #    output="screen",
+    #    arguments=[
+    #        "--x", "0.0", "--y", "0.0", "--z", "0.20",
+    #        "--yaw", "0.0", "--pitch", "0.0", "--roll", "0.0",
+    #        "--frame-id", f"{ns}/base_footprint",
+    #        "--child-frame-id", f"{ns}/base_scan",
+    #    ],
+    # ))
 
     # =========================================================
-    # 2) SLAM Toolbox
+    # SLAM Toolbox
     # =========================================================
     slam_params = {
         "use_sim_time": use_sim_time,
@@ -52,6 +50,7 @@ def launch_setup(context, *args, **kwargs):
         "scan_topic":  f"/{ns}/scan",
 
         "resolution": 0.05,
+        "scan_queue_size": 5,
 
         "max_laser_range": 8.0,
         "min_laser_range": 0.12,
@@ -69,8 +68,9 @@ def launch_setup(context, *args, **kwargs):
 
         "use_scan_matching": True,
         "use_scan_barycenter": True,
-        "minimum_travel_distance": 0.05,
-        "minimum_travel_heading": 0.1,
+        "minimum_travel_distance": 0.0,
+        "minimum_travel_heading": 0.0,
+        "minimum_time_interval": 0.1,
 
         "mode": "mapping",
         "debug_logging": False,
@@ -92,23 +92,7 @@ def launch_setup(context, *args, **kwargs):
     ))
 
     # =========================================================
-    # 3) world -> {ns}/map static TF
-    # =========================================================
-    # actions.append(Node(
-    #     package="tf2_ros",
-    #     executable="static_transform_publisher",
-    #     name=f"world_to_{ns}_map",
-    #     output="screen",
-    #     arguments=[
-    #         "--x", "0.0", "--y", "0.0", "--z", "0",
-    #         "--yaw", "0", "--pitch", "0", "--roll", "0",
-    #         "--frame-id", "world",
-    #         "--child-frame-id", f"{ns}/map",
-    #     ],
-    # ))
-
-    # =========================================================
-    # 4) DWB (controller_server + lifecycle_manager)
+    # DWB 
     # =========================================================
     configured_params = ParameterFile(
         RewrittenYaml(
@@ -146,7 +130,7 @@ def launch_setup(context, *args, **kwargs):
     ))
 
     # =========================================================
-    # 노드 정의 (필요한 것만 골라서 아래에서 append)
+    # 노드 정의 
     # =========================================================
     def frontier_node():
         return Node(
@@ -182,7 +166,7 @@ def launch_setup(context, *args, **kwargs):
                 "image_topic": f"/{ns}/camera/camera/color/image_raw",
                 "camera_info_topic": f"/{ns}/camera/camera/color/camera_info",
                 "camera_link_frame": f"{ns}/camera_link",
-                "obstacle_frame": "world",
+                "obstacle_frame": f"{ns}/map",
                 "camera_optical_frame": f"{ns}/camera_color_optical_frame",
             }],
         )
@@ -242,21 +226,13 @@ def launch_setup(context, *args, **kwargs):
                         "align_depth.enable": "true",
                         "rgb_camera.color_profile": "424x240x5",
                         "depth_module.depth_profile": "424x240x5",
-
-                        # "enable_color": "true",
-                        # "enable_depth": "true",
-                        # "enable_infra1": "false",
-                        # "enable_infra2": "false",
-                        # "enable_gyro": "false",
-                        # "enable_accel": "false",
-                        # "pointcloud.enable": "false",
                     }.items(),
                 )
             ],
         )
 
     # =========================================================
-    # 실행할 노드 선택 (필요 없는 건 주석 처리)
+    # 실행할 노드 선택 
     # =========================================================
     actions.append(camera_node())
     actions.append(frontier_node())

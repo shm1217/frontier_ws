@@ -39,9 +39,7 @@ class SavedMap:
         xy = np.asarray(xy, dtype=np.float64)
         out = np.empty_like(xy)
         out[..., 0] = self.origin_x + (xy[..., 0] + 0.5) * self.resolution
-        out[..., 1] = (
-            self.origin_y + (self.height - xy[..., 1] - 0.5) * self.resolution
-        )
+        out[..., 1] = self.origin_y + (self.height - xy[..., 1] - 0.5) * self.resolution
         return out
 
     def local_to_pixels(self, xy):
@@ -148,9 +146,12 @@ def feature_candidates(reference, moving, kp_ref, kp_mov, matches, args):
     candidates = []
     for idx in batches:
         matrix, inliers = cv2.estimateAffinePartial2D(
-            src[idx], dst[idx], method=cv2.RANSAC,
+            src[idx],
+            dst[idx],
+            method=cv2.RANSAC,
             ransacReprojThreshold=args.ransac_threshold_m,
-            maxIters=3000, confidence=0.995,
+            maxIters=3000,
+            confidence=0.995,
         )
         if matrix is None or inliers is None:
             continue
@@ -222,27 +223,41 @@ def refine_candidate(reference, moving, transform, context, args):
     """Locally refine a feature-based candidate using occupancy agreement."""
     best = (*overlap_score(reference, moving, transform, context), transform)
     stages = (
-        (args.refine_translation_m, args.refine_translation_step_m,
-         args.refine_yaw_deg, args.refine_yaw_step_deg),
-        (args.refine_translation_step_m, args.refine_fine_translation_step_m,
-         args.refine_yaw_step_deg, args.refine_fine_yaw_step_deg),
+        (
+            args.refine_translation_m,
+            args.refine_translation_step_m,
+            args.refine_yaw_deg,
+            args.refine_yaw_step_deg,
+        ),
+        (
+            args.refine_translation_step_m,
+            args.refine_fine_translation_step_m,
+            args.refine_yaw_step_deg,
+            args.refine_fine_yaw_step_deg,
+        ),
     )
     center = transform
     for translation_radius, translation_step, yaw_radius_deg, yaw_step_deg in stages:
         translation_offsets = np.arange(
-            -translation_radius, translation_radius + 0.5 * translation_step,
-            translation_step)
-        yaw_offsets = np.deg2rad(np.arange(
-            -yaw_radius_deg, yaw_radius_deg + 0.5 * yaw_step_deg,
-            yaw_step_deg))
+            -translation_radius,
+            translation_radius + 0.5 * translation_step,
+            translation_step,
+        )
+        yaw_offsets = np.deg2rad(
+            np.arange(
+                -yaw_radius_deg, yaw_radius_deg + 0.5 * yaw_step_deg, yaw_step_deg
+            )
+        )
         stage_best = best
         for dx in translation_offsets:
             for dy in translation_offsets:
                 for dyaw in yaw_offsets:
-                    candidate = (center[0] + float(dx), center[1] + float(dy),
-                                 center[2] + float(dyaw))
-                    result = overlap_score(
-                        reference, moving, candidate, context)
+                    candidate = (
+                        center[0] + float(dx),
+                        center[1] + float(dy),
+                        center[2] + float(dyaw),
+                    )
+                    result = overlap_score(reference, moving, candidate, context)
                     if result[0] > stage_best[0]:
                         stage_best = (*result, candidate)
         best = stage_best
@@ -254,8 +269,7 @@ def select_candidate(reference, moving, candidates, min_overlap, args):
     context = make_overlap_context(reference, args.wall_tolerance_m)
     ranked = []
     for transform in candidates:
-        ranked.append(refine_candidate(
-            reference, moving, transform, context, args))
+        ranked.append(refine_candidate(reference, moving, transform, context, args))
     ranked.sort(key=lambda item: item[0], reverse=True)
     if not ranked or ranked[0][0] < min_overlap:
         return None, ranked
@@ -270,18 +284,24 @@ def metric_cell_centers(saved_map):
 
 def merge_maps(reference, moving, transform, output_resolution, padding):
     corners = []
-    for saved_map, map_transform in (
-        (reference, (0.0, 0.0, 0.0)), (moving, transform)
-    ):
-        local = np.array([
-            [saved_map.origin_x, saved_map.origin_y],
-            [saved_map.origin_x + saved_map.width * saved_map.resolution,
-             saved_map.origin_y],
-            [saved_map.origin_x,
-             saved_map.origin_y + saved_map.height * saved_map.resolution],
-            [saved_map.origin_x + saved_map.width * saved_map.resolution,
-             saved_map.origin_y + saved_map.height * saved_map.resolution],
-        ])
+    for saved_map, map_transform in ((reference, (0.0, 0.0, 0.0)), (moving, transform)):
+        local = np.array(
+            [
+                [saved_map.origin_x, saved_map.origin_y],
+                [
+                    saved_map.origin_x + saved_map.width * saved_map.resolution,
+                    saved_map.origin_y,
+                ],
+                [
+                    saved_map.origin_x,
+                    saved_map.origin_y + saved_map.height * saved_map.resolution,
+                ],
+                [
+                    saved_map.origin_x + saved_map.width * saved_map.resolution,
+                    saved_map.origin_y + saved_map.height * saved_map.resolution,
+                ],
+            ]
+        )
         corners.append(transform_points(map_transform, local))
     bounds = np.vstack(corners)
     minimum = bounds.min(axis=0) - padding
@@ -290,9 +310,7 @@ def merge_maps(reference, moving, transform, output_resolution, padding):
     probability_sum = np.zeros((height, width), dtype=np.float64)
     count = np.zeros((height, width), dtype=np.int32)
 
-    for saved_map, map_transform in (
-        (reference, (0.0, 0.0, 0.0)), (moving, transform)
-    ):
+    for saved_map, map_transform in ((reference, (0.0, 0.0, 0.0)), (moving, transform)):
         points, occupancy = metric_cell_centers(saved_map)
         points = transform_points(map_transform, points)
         gx = np.floor((points[:, 0] - minimum[0]) / output_resolution).astype(int)
@@ -306,9 +324,7 @@ def merge_maps(reference, moving, transform, output_resolution, padding):
 
     merged = np.full((height, width), -1, dtype=np.int16)
     seen = count > 0
-    merged[seen] = np.rint(
-        100.0 * probability_sum[seen] / count[seen]
-    ).astype(np.int16)
+    merged[seen] = np.rint(100.0 * probability_sum[seen] / count[seen]).astype(np.int16)
     return merged, minimum
 
 
@@ -342,24 +358,30 @@ def save_merged_map(occupancy, origin, resolution, output_prefix):
 
 def save_diagnostics(reference, moving, kp_ref, kp_mov, matches, ranked, prefix):
     match_image = cv2.drawMatches(
-        moving.image, kp_mov, reference.image, kp_ref,
-        matches[:100], None,
+        moving.image,
+        kp_mov,
+        reference.image,
+        kp_ref,
+        matches[:100],
+        None,
         flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS,
     )
     cv2.imwrite(prefix + "_matches.png", match_image)
     with open(prefix + "_result.yaml", "w", encoding="utf-8") as stream:
         rows = []
         for score, agree, conflict, known, transform in ranked:
-            rows.append({
-                "tx": float(transform[0]),
-                "ty": float(transform[1]),
-                "yaw_rad": float(transform[2]),
-                "yaw_deg": float(math.degrees(transform[2])),
-                "overlap_score": float(score),
-                "occupied_agree": int(agree),
-                "free_conflict": int(conflict),
-                "known_compared": int(known),
-            })
+            rows.append(
+                {
+                    "tx": float(transform[0]),
+                    "ty": float(transform[1]),
+                    "yaw_rad": float(transform[2]),
+                    "yaw_deg": float(math.degrees(transform[2])),
+                    "overlap_score": float(score),
+                    "occupied_agree": int(agree),
+                    "free_conflict": int(conflict),
+                    "known_compared": int(known),
+                }
+            )
         yaml.safe_dump({"candidates": rows}, stream, sort_keys=False)
 
 
@@ -370,31 +392,48 @@ def parse_args():
     parser.add_argument("--output-prefix", default="merged_map_uwb")
     parser.add_argument("--max-features", type=int, default=2500)
     parser.add_argument("--orb-fast-threshold", type=int, default=5)
-    parser.add_argument("--orb-edge-threshold", type=int, default=8,
-                        help="allow features near cropped map borders")
+    parser.add_argument(
+        "--orb-edge-threshold",
+        type=int,
+        default=8,
+        help="allow features near cropped map borders",
+    )
     parser.add_argument("--orb-patch-size", type=int, default=31)
-    parser.add_argument("--ratio", type=float, default=0.8) # 0.78 (높을수록 더 많은 매칭이 통과됨)
-    parser.add_argument("--min-feature-matches", type=int, default=4) # 12
-    parser.add_argument("--ransac-batches", type=int, default=200) # 60
-    parser.add_argument("--ransac-threshold-m", type=float, default=0.50) # 0.2 (대응점 threshold)
-    parser.add_argument("--min-ransac-inliers", type=int, default=4) # 6
+    parser.add_argument(
+        "--ratio", type=float, default=0.8
+    )  # 0.78 (높을수록 더 많은 매칭이 통과됨)
+    parser.add_argument("--min-feature-matches", type=int, default=4)  # 12
+    parser.add_argument("--ransac-batches", type=int, default=200)  # 60
+    parser.add_argument(
+        "--ransac-threshold-m", type=float, default=0.50
+    )  # 0.2 (대응점 threshold)
+    parser.add_argument("--min-ransac-inliers", type=int, default=4)  # 6
     parser.add_argument("--min-ransac-inlier-ratio", type=float, default=0.30)
     parser.add_argument("--min-scale", type=float, default=0.95)
     parser.add_argument("--max-scale", type=float, default=1.05)
     parser.add_argument("--dedup-yaw-deg", type=float, default=2.0)
     parser.add_argument("--dedup-translation-m", type=float, default=0.20)
     parser.add_argument("--min-overlap-score", type=float, default=0.15)
-    parser.add_argument("--wall-tolerance-m", type=float, default=0.1, # 0.1
-                        help="maximum distance from a transformed wall to a reference wall")
-    parser.add_argument("--refine-translation-m", type=float, default=0.30,
-                        help="coarse local-search radius around each RANSAC candidate")
+    parser.add_argument(
+        "--wall-tolerance-m",
+        type=float,
+        default=0.1,  # 0.1
+        help="maximum distance from a transformed wall to a reference wall",
+    )
+    parser.add_argument(
+        "--refine-translation-m",
+        type=float,
+        default=0.30,
+        help="coarse local-search radius around each RANSAC candidate",
+    )
     parser.add_argument("--refine-translation-step-m", type=float, default=0.10)
     parser.add_argument("--refine-yaw-deg", type=float, default=3.0)
     parser.add_argument("--refine-yaw-step-deg", type=float, default=1.0)
     parser.add_argument("--refine-fine-translation-step-m", type=float, default=0.025)
     parser.add_argument("--refine-fine-yaw-step-deg", type=float, default=0.25)
-    parser.add_argument("--output-resolution", type=float, default=0.0,
-                        help="0 uses map0 resolution")
+    parser.add_argument(
+        "--output-resolution", type=float, default=0.0, help="0 uses map0 resolution"
+    )
     parser.add_argument("--padding-m", type=float, default=1.0)
     parser.add_argument("--random-seed", type=int, default=7)
     return parser.parse_args()
@@ -411,7 +450,8 @@ def main():
     candidates = feature_candidates(reference, moving, kp_ref, kp_mov, matches, args)
     print(f"RANSAC candidates: {len(candidates)}")
     selected, ranked = select_candidate(
-        reference, moving, candidates, args.min_overlap_score, args)
+        reference, moving, candidates, args.min_overlap_score, args
+    )
     prefix = os.path.abspath(args.output_prefix)
     save_diagnostics(reference, moving, kp_ref, kp_mov, matches, ranked, prefix)
 
@@ -429,8 +469,7 @@ def main():
         )
 
     resolution = args.output_resolution or reference.resolution
-    merged, origin = merge_maps(
-        reference, moving, selected, resolution, args.padding_m)
+    merged, origin = merge_maps(reference, moving, selected, resolution, args.padding_m)
     pgm_path, yaml_path = save_merged_map(merged, origin, resolution, prefix)
     print(
         f"selected transform map1->map0: tx={selected[0]:.4f}m, "

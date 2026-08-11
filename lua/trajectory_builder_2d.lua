@@ -1,1 +1,0 @@
-/opt/ros/humble/share/cartographer/configuration_files/trajectory_builder_2d.lua

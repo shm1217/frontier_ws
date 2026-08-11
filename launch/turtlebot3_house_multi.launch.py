@@ -79,7 +79,9 @@ def generate_launch_description():
     gui = LaunchConfiguration("gui", default="true")
     world_arg = LaunchConfiguration("world")
 
+    # TODO: 로봇 스폰 위치 조정 가능
     robots = load_robots(os.path.join(pkg_this, "config", "robots.yaml"))
+    # TODO: 경로 설정
     default_world = first_existing([
     "/home/hdzggg/turtlebot3_simulations/install/turtlebot3_gazebo/share/turtlebot3_gazebo/worlds/turtlebot3_house.world",
     "/home/hdzggg/turtlebot3_simulations/turtlebot3_gazebo/worlds/turtlebot3_house.world",

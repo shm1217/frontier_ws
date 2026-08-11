@@ -11,12 +11,11 @@
 #include <vector>
 
 Controller::Controller(rclcpp::Clock::SharedPtr clock)
-: clock_(std::move(clock))
+    : clock_(std::move(clock))
 {
-    
 }
 
-void Controller::obs_update(const frontier_ws::msg::DynamicObstacle::SharedPtr msg) 
+void Controller::obs_update(const frontier_ws::msg::DynamicObstacle::SharedPtr msg)
 {
     auto &obs_state = dynamic_obs[msg->track_id];
     obs_state.x = msg->x;
@@ -28,7 +27,7 @@ void Controller::obs_update(const frontier_ws::msg::DynamicObstacle::SharedPtr m
     obs_state.last_update = clock_->now();
 }
 
-void Controller::goal_update(std::pair<double,double> goal)
+void Controller::goal_update(std::pair<double, double> goal)
 {
     goal_x = goal.first;
     goal_y = goal.second;
@@ -37,17 +36,6 @@ void Controller::goal_update(std::pair<double,double> goal)
 
 void Controller::pose_update(double x, double y, double yaw)
 {
-    // geometry_msgs::msg::TransformStamped t;
-    // try
-    // {
-    //     t = tf_buffer.lookupTransform("camera_init", "base_scan", tf2::TimePointZero);
-    // }
-    // catch (const tf2::TransformException &ex)
-    // {
-    //     RCLCPP_INFO_ONCE(this->get_logger(), "Could not transform camera_init to base_scan");
-    //     return;
-    // }
-
     robot_x = x;
     robot_y = y;
     robot_z = 0.0;
@@ -59,7 +47,8 @@ void Controller::pose_update(double x, double y, double yaw)
 bool Controller::has_collision_risk()
 {
     remove_stale_obstacles();
-    if (!has_goal || !has_pose || dynamic_obs.empty()) return false;
+    if (!has_goal || !has_pose || dynamic_obs.empty())
+        return false;
 
     const double goal_yaw = std::atan2(goal_y - robot_y, goal_x - robot_x);
     const double safety_distance = robot_radius + obstacle_radius + 0.25;
@@ -73,7 +62,8 @@ bool Controller::has_collision_risk()
             (void)id;
             const double ox = obstacle.x + obstacle.vx * t;
             const double oy = obstacle.y + obstacle.vy * t;
-            if (std::hypot(rx - ox, ry - oy) < safety_distance) return true;
+            if (std::hypot(rx - ox, ry - oy) < safety_distance)
+                return true;
         }
     }
     return false;
@@ -128,7 +118,7 @@ geometry_msgs::msg::Twist Controller::control_cmd_update()
 
     cmd.linear.x = best_sequence.front().v;
     cmd.angular.z = best_sequence.front().w;
-    
+
     robot_v = best_sequence.front().v;
     robot_w = best_sequence.front().w;
     previous_best_sequence = best_sequence;
@@ -138,8 +128,6 @@ geometry_msgs::msg::Twist Controller::control_cmd_update()
     predict_trajectories(best_sequence, robot_traj, obs_traj);
 
     return cmd;
-
-    // visualize_trajectory(robot_traj, obs_traj);
 }
 
 void Controller::remove_stale_obstacles()
@@ -163,7 +151,7 @@ void Controller::remove_stale_obstacles()
     }
 }
 
-std::vector<std::vector<ControlInput>> Controller::sample_control_sequences() // 후보 제어 시퀀스를 여러개 만드는 함수
+std::vector<std::vector<ControlInput>> Controller::sample_control_sequences() 
 {
     std::vector<std::vector<ControlInput>> sequences;
     sequences.reserve(num_control_sequences + 4);
@@ -259,7 +247,7 @@ std::vector<std::vector<ControlInput>> Controller::sample_control_sequences() //
                                    sequence_index >= num_control_sequences / 3 &&
                                    sequence_index < 2 * num_control_sequences / 3;
 
-        const double bypass_direction = (sequence_index % 2 == 0) ? -1.0 : 1.0; // 추가
+        const double bypass_direction = (sequence_index % 2 == 0) ? -1.0 : 1.0; 
 
         double x_next = robot_x;
         double y_next = robot_y;
@@ -300,11 +288,6 @@ std::vector<std::vector<ControlInput>> Controller::sample_control_sequences() //
                 v = max_v * std::max(0.2, std::cos(heading_error)) + noise_v(rng);
                 w = 1.5 * heading_error + noise_w(rng);
             }
-            // else if (step % control_hold_steps == 0)
-            // {
-            //     v = uniform_v(rng);
-            //     w = uniform_w(rng);
-            // }
 
             v = std::clamp(v, 0.0, max_v);
             w = std::clamp(w, -max_w, max_w);
@@ -321,7 +304,7 @@ std::vector<std::vector<ControlInput>> Controller::sample_control_sequences() //
     return sequences;
 }
 
-std::vector<ControlInput> Controller::make_goal_tracking_sequence() // 목표 방향으로 가는 기본 제어 시퀀스 만듬
+std::vector<ControlInput> Controller::make_goal_tracking_sequence() // 목표 방향으로 가는 기본 제어 시퀀스
 {
     std::vector<ControlInput> control_sequence;
     control_sequence.reserve(robot_N);
@@ -476,7 +459,7 @@ double Controller::evaluate_control_sequence(const std::vector<ControlInput> &co
     double speed_cost = 0.0;
     double turn_cost = 0.0;       // 각속도 갑자기 커지는 현상 억제
     double rotation_cost = 0.0;   // 제자리 회전 억제
-    double smoothness_cost = 0.0; // 속도 부드럽게 변하기 위함
+    double smoothness_cost = 0.0; 
     double prev_v = robot_v;
     double prev_w = robot_w;
     for (const auto &u : control_sequence)
@@ -497,14 +480,14 @@ double Controller::evaluate_control_sequence(const std::vector<ControlInput> &co
     turn_cost /= static_cast<double>(control_sequence.size());
 
     double total_cost =
-        1.5 * goal_cost +      // 끝점   1.5
+        1.5 * goal_cost +      // 끝점에 대해서
         0.8 * path_goal_cost + // 전체 경로에 대해서
-        0.3 * obstacle_cost +  // 0.5
-        0.7 * heading_cost +   // 1.3
+        0.3 * obstacle_cost +  
+        0.7 * heading_cost +   
         0.8 * path_heading_cost +
         0.5 * speed_cost +
-        0.1 * turn_cost +     // 0.1
-        1.0 * rotation_cost + // 1.5
+        0.1 * turn_cost +     
+        1.0 * rotation_cost + 
         1.0 * smoothness_cost;
 
     return total_cost;

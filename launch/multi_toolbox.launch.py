@@ -18,6 +18,7 @@ def generate_launch_description():
     param_file = os.path.join(pkg_dir, 'config', 'params.yaml')
     dwb_param_file = os.path.join(pkg_dir, 'config', 'dwb_controller.yaml')
 
+    # TODO: 로봇 대수 설정 가능
     robots = [
         {"ns": "tb3_0"},
         {"ns": "tb3_1"},
@@ -25,7 +26,7 @@ def generate_launch_description():
     ]
 
     # =========================================================
-    # 1) 로봇별 base -> scan static TF 
+    # 로봇별 base -> scan static TF 
     # =========================================================
     for r in robots:
         ns = r["ns"]
@@ -43,7 +44,7 @@ def generate_launch_description():
         ))
 
     # =========================================================
-    # 2) SLAM Toolbox (로봇별 실행, online async 모드)
+    # SLAM Toolbox 
     # =========================================================
     for r in robots:
         ns = r["ns"]
@@ -105,41 +106,11 @@ def generate_launch_description():
         ))
 
     # =========================================================
-    # 3) world -> tb3_x/map static TF 
-    # =========================================================
-    # ld.add_action(Node(
-    #     package="tf2_ros",
-    #     executable="static_transform_publisher",
-    #     name="world_to_tb3_0_map",
-    #     arguments=[
-    #         "--x", "0.0", "--y", "0.0", "--z", "0",
-    #         "--yaw", "0", "--pitch", "0", "--roll", "0",
-    #         "--frame-id", "world",
-    #         "--child-frame-id", "tb3_0/map",
-    #     ],
-    # ))
-    # ld.add_action(Node(
-    #     package="tf2_ros",
-    #     executable="static_transform_publisher",
-    #     name="world_to_tb3_1_map",
-    #     arguments=[
-    #         "--x", "0.0", "--y", "0.0", "--z", "0",
-    #         "--yaw", "0", "--pitch", "0", "--roll", "0",
-    #         "--frame-id", "world",
-    #         "--child-frame-id", "tb3_1/map",
-    #     ],
-    # ))
-
-
-
-    # =========================================================
-    # 4) frontier 노드 (기존과 동일)
+    # frontier 노드
     # =========================================================
     def frontier_node(ns: str):
         return Node(
             package="frontier_ws",
-            # executable="frontier_multi", 
-            # name="frontier_multi",
             executable="frontier_multi_uwb", 
             name="frontier_multi_uwb",
             namespace=ns,
@@ -151,21 +122,18 @@ def generate_launch_description():
                 "map_frame": "world",
                 "base_frame": f"{ns}/base_footprint",
                 "global_frame": "world",
-                "merge_map_stale_s": 5.0,   # gate_node.py의 merge_map_stale_s와 맞추기
-                "local_map_topic": "map",   # 명시적으로 남겨두면 나중에 헷갈릴 일 없음
+                "merge_map_stale_s": 5.0,   
+                "local_map_topic": "map",  
             }],
         )
 
     def dwb_nodes(ns: str):
-        # RewrittenYaml makes each controller/costmap instance private to its robot namespace.
         configured_params = ParameterFile(
             RewrittenYaml(
                 source_file=dwb_param_file,
                 root_key=ns,
                 param_rewrites={
                     'use_sim_time': use_sim_time_str,
-                    # Humble의 RewrittenYaml은 여기서 leaf parameter key를
-                    # 대상으로 치환한다.
                     'robot_base_frame': f'{ns}/base_footprint',
                     'global_frame': f'{ns}/odom',
                     'topic': f'/{ns}/scan',
@@ -208,9 +176,9 @@ def generate_launch_description():
             "image_topic": f"/{ns}/camera/camera/color/image_raw",
             "camera_info_topic": f"/{ns}/camera/camera/color/camera_info",
             "camera_link_frame": f"{ns}/camera_link",
-            "obstacle_frame": "world",
+            "obstacle_frame": f"{ns}/map",
             "camera_optical_frame": f"{ns}/camera_color_optical_frame",
-        }] # True: /clock 사용, ros bag 사용할 때, False: system time 사용
+        }] 
     )
 
     def yolo_node(ns: str):
@@ -222,33 +190,16 @@ def generate_launch_description():
                     'yolo.launch.py'
                 )
             ),
-            ## 실물에서
             launch_arguments={
                 "use_3d": "True",
-                "input_image_topic": f"/{ns}/camera/camera/color/image_raw",
+                "input_image_topic": f"/{ns}/camera/camera/image_raw",
                 "target_frame": f"{ns}/camera_link",
-                "input_depth_topic": f"/{ns}/camera/camera/aligned_depth_to_color/image_raw",
-                "input_depth_info_topic": f"/{ns}/camera/camera/color/camera_info",
-                "use_sim_time": use_sim_time_str,
-                "namespace": f"{ns}/yolo", 
-                "device": "cuda:0",
-
-                # "image_reliability": "1",        # 1: Reliable, 2: Best Effort
-                # "depth_image_reliability": "1",  # 1: Reliable, 2: Best Effort
-                # "depth_info_reliability": "1"    # 1: Reliable, 2: Best Effort
+                "input_depth_topic": f"/{ns}/camera/camera/depth/image_raw",
+                "input_depth_info_topic": f"/{ns}/camera/camera/camera_info",
+                "use_sim_time":"true",
+                "depth_image_units_divisor": "1",
+                "namespace": f"{ns}/yolo",
             }.items(),
-
-            # ## gazebo에서
-            # launch_arguments={
-            #     "use_3d": "True",
-            #     "input_image_topic": f"/{ns}/camera/camera/image_raw",
-            #     "target_frame": f"{ns}/camera_link",
-            #     "input_depth_topic": f"/{ns}/camera/camera/depth/image_raw",
-            #     "input_depth_info_topic": f"/{ns}/camera/camera/camera_info",
-            #     "use_sim_time":"true",
-            #     "depth_image_units_divisor": "1",
-            #     "namespace": f"{ns}/yolo",
-            # }.items(),
         )
     
     def camera_node(ns: str):

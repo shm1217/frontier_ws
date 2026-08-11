@@ -1,1 +1,0 @@
-/opt/ros/humble/share/cartographer/configuration_files/pose_graph.lua

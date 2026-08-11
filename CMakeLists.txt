@@ -32,6 +32,7 @@ find_package(tf2_eigen REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(image_geometry REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/BboxImg.msg"
@@ -42,17 +43,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 
 
 
-add_executable(frontier_multi
-  src/frontier_multi.cpp
-  src/frontier_multi_main.cpp
-  src/controller.cpp
-)
-
-rosidl_target_interfaces(frontier_multi
-  ${PROJECT_NAME} "rosidl_typesupport_cpp")
-
-# Feature/UWB map merging variant. The original frontier_multi target is kept
-# unchanged so both exploration modes can be selected from launch files.
 add_executable(frontier_multi_uwb
   src/frontier_multi_uwb.cpp
   src/controller.cpp
@@ -60,12 +50,6 @@ add_executable(frontier_multi_uwb
 
 rosidl_target_interfaces(frontier_multi_uwb
   ${PROJECT_NAME} "rosidl_typesupport_cpp")
-
-# 헤더 파일 경로 포함 (include 폴더에 .hpp가 있는 경우)
-target_include_directories(frontier_multi PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  ${rclcpp_EXPORTED_TARGETS}
-)
 
 target_include_directories(frontier_multi_uwb PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -88,6 +72,7 @@ ament_target_dependencies(detect_node
   cv_bridge
   image_geometry
   OpenCV
+  ament_index_cpp
 )
 
 rosidl_target_interfaces(detect_node
@@ -96,18 +81,6 @@ rosidl_target_interfaces(detect_node
 target_include_directories(detect_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   ${rclcpp_EXPORTED_TARGETS}
-)
-
-ament_target_dependencies(frontier_multi
-  rclcpp
-  rclcpp_action
-  nav_msgs
-  geometry_msgs
-  tf2
-  tf2_ros
-  tf2_geometry_msgs
-  visualization_msgs
-  nav2_msgs
 )
 
 ament_target_dependencies(frontier_multi_uwb
@@ -123,7 +96,7 @@ ament_target_dependencies(frontier_multi_uwb
 )
 
 
-install(TARGETS frontier_multi frontier_multi_uwb
+install(TARGETS frontier_multi_uwb
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -131,7 +104,12 @@ install(TARGETS detect_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
-install(DIRECTORY launch config lua scripts
+install(DIRECTORY launch config scripts
+  DESTINATION share/${PROJECT_NAME}
+)
+
+install(
+  DIRECTORY appearance_file
   DESTINATION share/${PROJECT_NAME}
 )
 
