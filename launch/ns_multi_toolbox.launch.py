@@ -27,18 +27,18 @@ def launch_setup(context, *args, **kwargs):
     # =========================================================
     # 1) base -> scan static TF
     # =========================================================
-    actions.append(Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        name=f"{ns}_base_to_scan",
-        output="screen",
-        arguments=[
-            "--x", "0.0", "--y", "0.0", "--z", "0.20",
-            "--yaw", "0.0", "--pitch", "0.0", "--roll", "0.0",
-            "--frame-id", f"{ns}/base_footprint",
-            "--child-frame-id", f"{ns}/base_scan",
-        ],
-    ))
+    #actions.append(Node(
+    #    package="tf2_ros",
+    #    executable="static_transform_publisher",
+    #    name=f"{ns}_base_to_scan",
+    #    output="screen",
+    #    arguments=[
+    #        "--x", "0.0", "--y", "0.0", "--z", "0.20",
+    #        "--yaw", "0.0", "--pitch", "0.0", "--roll", "0.0",
+    #        "--frame-id", f"{ns}/base_footprint",
+    #        "--child-frame-id", f"{ns}/base_scan",
+    #    ],
+    #))
 
     # =========================================================
     # 2) SLAM Toolbox
@@ -52,7 +52,7 @@ def launch_setup(context, *args, **kwargs):
         "scan_topic":  f"/{ns}/scan",
 
         "resolution": 0.05,
-        "scan_queue_size": 5,
+        "scan_queue_size": 1,
 
         "max_laser_range": 8.0,
         "min_laser_range": 0.12,

@@ -50,11 +50,11 @@ class MergeMapUwb(Node):
         self.max_samples = int(self.declare_parameter("max_range_samples", 1000).value)
         self.min_motion = float(self.declare_parameter("min_sample_motion_m", 0.1).value) ## 0.08
         self.max_anchor_rmse = float(self.declare_parameter(
-            "max_anchor_rmse_m", 0.4).value) ## 0.35
+            "max_anchor_rmse_m", 0.5).value) ## 0.35
         self.max_anchor_match = float(self.declare_parameter(
             "max_anchor_match_error_m", 1.0).value) ## 0.6
         self.min_feature_matches = int(self.declare_parameter(
-            "min_feature_matches", 5).value) ## 5
+            "min_feature_matches", 15).value) ## 5
         self.max_features = int(self.declare_parameter(
             "max_features", 2500).value)
         self.orb_fast_threshold = int(self.declare_parameter(
@@ -64,15 +64,15 @@ class MergeMapUwb(Node):
         self.orb_patch_size = int(self.declare_parameter(
             "orb_patch_size", 31).value) ## 10 31
         self.feature_ratio = float(self.declare_parameter(
-            "feature_ratio", 0.7).value) ## 0.78
+            "feature_ratio", 0.6).value) ## 0.78
         self.ransac_batches = int(self.declare_parameter(
             "ransac_batches", 100).value) ## 60
         self.ransac_threshold = float(self.declare_parameter(
             "ransac_threshold_m", 0.10).value) ## 0.20
         self.min_ransac_inliers = int(self.declare_parameter(
-            "min_ransac_inliers", 4).value) ## 4
+            "min_ransac_inliers", 8).value) ## 4
         self.min_ransac_inlier_ratio = float(self.declare_parameter(
-            "min_ransac_inlier_ratio", 0.30).value) ## 0.30
+            "min_ransac_inlier_ratio", 0.50).value) ## 0.30
         self.min_scale = float(self.declare_parameter("min_scale", 0.95).value)
         self.max_scale = float(self.declare_parameter("max_scale", 1.05).value)
         # self.dedup_yaw = math.radians(float(self.declare_parameter(
@@ -90,7 +90,7 @@ class MergeMapUwb(Node):
         self.min_overlap_score = float(self.declare_parameter(
             "min_overlap_score", 0.5).value) ## 0.5 0.2
         self.min_overlap_coverage = float(self.declare_parameter(
-            "min_overlap_coverage", 0.1).value) ## 0.1 0.05
+            "min_overlap_coverage", 0.2).value) ## 0.1 0.05
         self.wall_tolerance = float(self.declare_parameter(
             "wall_tolerance_m", 0.10).value)
         self.refine_yaw = float(self.declare_parameter(
@@ -623,37 +623,165 @@ class MergeMapUwb(Node):
         self.map_pub.publish(merged)
 
     def tick(self):
+        # 1) map 수신 여부 확인
         if any(ns not in self.maps for ns in self.robots):
+            self.get_logger().warn(
+                f"waiting maps: have={list(self.maps.keys())}"
+            )
             return
+
+        # =========================================================
+        # 이미 한 번 registration 성공했으면
+        # 기존 transform을 계속 사용해서 map만 갱신
+        # =========================================================
+        if self.locked:
+            self.get_logger().info(
+                "registration already locked -> using existing transforms"
+            )
+
+            for ns, transform in self.transforms.items():
+                self.get_logger().info(
+                    f"[{ns}] fixed transform: "
+                    f"tx={transform[0]:.3f}, "
+                    f"ty={transform[1]:.3f}, "
+                    f"yaw={math.degrees(transform[2]):.2f} deg"
+                )
+
+            self.merge_and_publish()
+            return
+
+        # =========================================================
+        # 여기부터는 최초 registration 이전에만 실행
+        # =========================================================
+
+        # 2) 각 로봇 UWB 샘플 / anchor 계산
         for ns in self.robots:
             numeric_samples = [sample[:3] for sample in self.samples[ns]]
-            front_count = sum(sample[3] == "front" for sample in self.samples[ns])
-            back_count = sum(sample[3] == "back" for sample in self.samples[ns])
+            front_count = sum(
+                sample[3] == "front" for sample in self.samples[ns]
+            )
+            back_count = sum(
+                sample[3] == "back" for sample in self.samples[ns]
+            )
             min_per_tag = max(3, self.min_samples // 2)
+
+            self.get_logger().info(
+                f"[{ns}] samples: total={len(numeric_samples)}, "
+                f"front={front_count}, back={back_count}, "
+                f"required_total={self.min_samples}, "
+                f"required_per_tag={min_per_tag}"
+            )
+
             estimate = self.estimate_anchor(numeric_samples)
-            if (estimate is not None and len(numeric_samples) >= self.min_samples
-                    and front_count >= min_per_tag and back_count >= min_per_tag):
+
+            if estimate is None:
+                self.get_logger().warn(
+                    f"[{ns}] anchor estimation failed "
+                    f"(samples={len(numeric_samples)})"
+                )
+            else:
+                anchor, rmse = estimate
+
+                self.get_logger().info(
+                    f"[{ns}] anchor estimate: "
+                    f"x={anchor[0]:.3f}, y={anchor[1]:.3f}, "
+                    f"rmse={rmse:.3f} m "
+                    f"(max={self.max_anchor_rmse:.3f} m)"
+                )
+
+            if (
+                estimate is not None
+                and len(numeric_samples) >= self.min_samples
+                and front_count >= min_per_tag
+                and back_count >= min_per_tag
+            ):
                 self.anchors[ns] = estimate
-        if any(ns not in self.anchors or self.anchors[ns][1] > self.max_anchor_rmse
-               for ns in self.robots):
+
+        # 3) anchor 검사
+        anchor_not_ready = False
+
+        for ns in self.robots:
+            if ns not in self.anchors:
+                self.get_logger().warn(
+                    f"[{ns}] waiting anchor: anchor does not exist yet"
+                )
+                anchor_not_ready = True
+                continue
+
+            anchor, rmse = self.anchors[ns]
+
+            if rmse > self.max_anchor_rmse:
+                self.get_logger().warn(
+                    f"[{ns}] anchor rejected by RMSE: "
+                    f"{rmse:.3f} > {self.max_anchor_rmse:.3f}"
+                )
+                anchor_not_ready = True
+
+        if anchor_not_ready:
+            self.get_logger().warn(
+                "map merging waiting: anchors are not ready"
+            )
             return
 
-        if not self.locked:
-            self.transforms = {self.reference_robot: (0.0, 0.0, 0.0)}
-            for ns in self.robots:
-                if ns == self.reference_robot:
-                    continue
-                transform = self.select_transform(self.reference_robot, ns)
-                if transform is None:
-                    self.transforms = {}
-                    self.publish_valid(False)
-                    return
-                self.transforms[ns] = transform
-            self.locked = True
-            self.broadcast_transforms()
-            self.publish_valid(True)
-        self.merge_and_publish()
+        # =========================================================
+        # 4) 최초 registration
+        # =========================================================
+        self.get_logger().info(
+            f"starting map registration: "
+            f"reference_robot={self.reference_robot}"
+        )
 
+        self.transforms = {
+            self.reference_robot: (0.0, 0.0, 0.0)
+        }
+
+        for ns in self.robots:
+            if ns == self.reference_robot:
+                continue
+
+            self.get_logger().info(
+                f"registering {ns} -> {self.reference_robot}"
+            )
+
+            transform = self.select_transform(
+                self.reference_robot,
+                ns
+            )
+
+            if transform is None:
+                self.get_logger().error(
+                    f"registration failed: "
+                    f"{ns} -> {self.reference_robot}"
+                )
+
+                self.transforms = {}
+                self.publish_valid(False)
+                return
+
+            self.transforms[ns] = transform
+
+            self.get_logger().info(
+                f"registration transform LOCKED: "
+                f"{ns} -> {self.reference_robot}, "
+                f"tx={transform[0]:.3f}, "
+                f"ty={transform[1]:.3f}, "
+                f"yaw={math.degrees(transform[2]):.2f} deg"
+            )
+
+        # =========================================================
+        # 여기서부터 transform 고정
+        # =========================================================
+        self.locked = True
+
+        self.get_logger().info(
+            "map registration complete -> transforms are now LOCKED"
+        )
+
+        self.broadcast_transforms()
+        self.publish_valid(True)
+
+        # 최초 merge
+        self.merge_and_publish()
 
 def main(args=None):
     rclpy.init(args=args)
