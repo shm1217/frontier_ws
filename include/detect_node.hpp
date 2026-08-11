@@ -84,7 +84,7 @@ struct yolo_track
     bool has_prev = false;
 };
 
-struct save_track // appearance cost 포함해서 tracking 결과 확인하기 위해
+struct save_track 
 {
     double cost = 0.0;
     double base_cost = 0.0;
@@ -97,7 +97,7 @@ struct save_track // appearance cost 포함해서 tracking 결과 확인하기 �
     Eigen::VectorXf det_emb;
     bool best_pair = false;
     double curr_x = 0.0;
-    double curr_size = 0.0; // bbox size
+    double curr_size = 0.0; 
     obj pose;
     Eigen::Vector3d boxsize;
     sensor_msgs::msg::Image det_img;
@@ -137,8 +137,8 @@ class DetectNode : public rclcpp::Node
 {
 public:
     DetectNode();
-    std::unordered_map<int, cloud_track> tracks_;    // id 정해진 후 id별로 KF 적용하기 위함
-    std::unordered_map<int, yolo_track> yolo_tracks; // id 정하기 위해 최종 저장 본
+    std::unordered_map<int, cloud_track> tracks_;    
+    std::unordered_map<int, yolo_track> yolo_tracks; 
     std::unordered_map<int, yolo_track> det_track;
     std::unordered_map<int, yolo_track> kal_track;
     std::vector<std::vector<save_track>> retrack;
@@ -163,7 +163,7 @@ public:
     int prev_track_emb_frame_ = -1;
 
     rclcpp::Time last_process_time_;
-    double process_period_sec_ = 0.5; // 2Hz
+    double process_period_sec_ = 0.5; 
     bool has_prev = false;
     bool kalman = false;
 
@@ -206,7 +206,6 @@ public:
 private:
     rclcpp::Subscription<yolo_msgs::msg::DetectionArray>::SharedPtr sub_yolo;
     rclcpp::Subscription<frontier_ws::msg::EmbArray>::SharedPtr sub_emb;
-    // rclcpp::Subscription<frontier_ws::msg::EmbArray>::SharedPtr sub_rep_emb;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr sub_img;
     rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr sub_camera;
 
@@ -237,8 +236,6 @@ private:
     tf2_ros::TransformListener tf_listener;
 
     rclcpp::TimerBase::SharedPtr timer;
-    // std::shared_ptr<tf2_ros::TransformListener> tf_listener;
-    // std::unique_ptr<tf2_ros::Buffer> tf_buffer;
 };
 
 #endif // DETECT_NODE_H

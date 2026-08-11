@@ -39,31 +39,37 @@ def quaternion_from_yaw(yaw: float):
 
 class UwbHeadingNode(Node):
     def __init__(self):
-        super().__init__('uwb_heading_node')
+        super().__init__("uwb_heading_node")
 
         # ---- 파라미터 ----
-        self.declare_parameter('namespace', 'tb3_0')
-        self.declare_parameter('front_topic', 'uwb_front/position')
-        self.declare_parameter('back_topic', 'uwb_back/position')
-        self.declare_parameter('world_frame', 'world')
-        self.declare_parameter('num_samples', 30)          # 평균낼 샘플 개수
-        self.declare_parameter('max_sample_age_sec', 0.5)  # front/back 짝 맞출 때 허용 시간차
+        self.declare_parameter("namespace", "tb3_0")
+        self.declare_parameter("front_topic", "uwb_front/position")
+        self.declare_parameter("back_topic", "uwb_back/position")
+        self.declare_parameter("world_frame", "world")
+        self.declare_parameter("num_samples", 30)  # 평균낼 샘플 개수
+        self.declare_parameter(
+            "max_sample_age_sec", 0.5
+        )  # front/back 짝 맞출 때 허용 시간차
         # 두 태그의 중점이 base_link와 다르면(예: back 태그가 base_link에 더 가까움),
         # back 태그로부터 base_link까지의 forward 방향 거리(m)를 넣어 보정.
         # 0.0이면 "중점 = base_link"로 그대로 사용.
-        self.declare_parameter('tag_offset_from_back', 0.0)
-        self.declare_parameter('keep_publishing', False)   # True면 종료하지 않고 num_samples마다 갱신
+        self.declare_parameter("tag_offset_from_back", 0.0)
+        self.declare_parameter(
+            "keep_publishing", False
+        )  # True면 종료하지 않고 num_samples마다 갱신
 
-        self.namespace = self.get_parameter('namespace').value
-        front_topic = self.get_parameter('front_topic').value
-        back_topic = self.get_parameter('back_topic').value
-        self.world_frame = self.get_parameter('world_frame').value
-        self.num_samples = int(self.get_parameter('num_samples').value)
-        self.max_sample_age = float(self.get_parameter('max_sample_age_sec').value)
-        self.tag_offset_from_back = float(self.get_parameter('tag_offset_from_back').value)
-        self.keep_publishing = bool(self.get_parameter('keep_publishing').value)
+        self.namespace = self.get_parameter("namespace").value
+        front_topic = self.get_parameter("front_topic").value
+        back_topic = self.get_parameter("back_topic").value
+        self.world_frame = self.get_parameter("world_frame").value
+        self.num_samples = int(self.get_parameter("num_samples").value)
+        self.max_sample_age = float(self.get_parameter("max_sample_age_sec").value)
+        self.tag_offset_from_back = float(
+            self.get_parameter("tag_offset_from_back").value
+        )
+        self.keep_publishing = bool(self.get_parameter("keep_publishing").value)
 
-        self.map_frame = f'{self.namespace}/map'
+        self.map_frame = f"{self.namespace}/map"
 
         self._latest_front = None  # (x, y, stamp_sec)
         self._latest_back = None
@@ -80,7 +86,7 @@ class UwbHeadingNode(Node):
 
         self.get_logger().info(
             f'[{self.namespace}] front="{front_topic}" back="{back_topic}" '
-            f'num_samples={self.num_samples} 대기 중...'
+            f"num_samples={self.num_samples} 대기 중..."
         )
 
     def _front_cb(self, msg: PointStamped):
@@ -113,7 +119,7 @@ class UwbHeadingNode(Node):
             if not self.keep_publishing:
                 self._done = True
                 self.get_logger().info(
-                    f'[{self.namespace}] TF broadcast 완료, 노드 종료합니다.'
+                    f"[{self.namespace}] TF broadcast 완료, 노드 종료합니다."
                 )
                 # static TF가 이미 latched 되었으니 노드가 죽어도 TF는 유지됨
                 rclpy.shutdown()
@@ -133,8 +139,8 @@ class UwbHeadingNode(Node):
 
         if baseline < 1e-3:
             self.get_logger().warn(
-                f'[{self.namespace}] front/back 태그 거리가 거의 0입니다 '
-                f'(baseline={baseline:.3f}m). yaw 계산이 불안정할 수 있습니다.'
+                f"[{self.namespace}] front/back 태그 거리가 거의 0입니다 "
+                f"(baseline={baseline:.3f}m). yaw 계산이 불안정할 수 있습니다."
             )
 
         yaw = math.atan2(dy, dx)
@@ -174,17 +180,17 @@ class UwbHeadingNode(Node):
         self.static_broadcaster.sendTransform(t)
 
         self.get_logger().info(
-            f'[{self.namespace}] baseline={baseline:.3f}m, '
-            f'yaw={math.degrees(yaw):.1f}deg, '
-            f'{self.world_frame} -> {self.map_frame} = '
-            f'(x={map_tx:.3f}, y={map_ty:.3f}, yaw={math.degrees(map_yaw):.1f}deg) publish 완료'
+            f"[{self.namespace}] baseline={baseline:.3f}m, "
+            f"yaw={math.degrees(yaw):.1f}deg, "
+            f"{self.world_frame} -> {self.map_frame} = "
+            f"(x={map_tx:.3f}, y={map_ty:.3f}, yaw={math.degrees(map_yaw):.1f}deg) publish 완료"
         )
 
         if baseline < 0.15:
             self.get_logger().warn(
-                f'[{self.namespace}] baseline이 {baseline:.2f}m로 짧습니다. '
-                f'UWB 위치 오차(±10~30cm 수준) 대비 yaw 오차가 커질 수 있으니 '
-                f'가능하면 태그 간격을 더 벌리는 것을 권장합니다.'
+                f"[{self.namespace}] baseline이 {baseline:.2f}m로 짧습니다. "
+                f"UWB 위치 오차(±10~30cm 수준) 대비 yaw 오차가 커질 수 있으니 "
+                f"가능하면 태그 간격을 더 벌리는 것을 권장합니다."
             )
 
 
@@ -201,5 +207,5 @@ def main(args=None):
             rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

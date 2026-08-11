@@ -13,6 +13,7 @@
 사용법 예:
 python3 scripts/uwb_anchor_mapper.py --namespaces tb3_0 tb3_1 --anchor-frame anchor --rate 5
 """
+
 import argparse
 import math
 from collections import defaultdict
@@ -40,8 +41,10 @@ def yaw_from_quat(q):
 
 
 class UwbAnchorMapper(Node):
-    def __init__(self, namespaces, anchor_frame='anchor', rate=5.0, range_topic='uwb/range'):
-        super().__init__('uwb_anchor_mapper')
+    def __init__(
+        self, namespaces, anchor_frame="anchor", rate=5.0, range_topic="uwb/range"
+    ):
+        super().__init__("uwb_anchor_mapper")
         self.namespaces = namespaces
         self.anchor_frame = anchor_frame
         self.rate = rate
@@ -60,12 +63,16 @@ class UwbAnchorMapper(Node):
             # - /{ns}/uwb/position (geometry_msgs/PointStamped)
             # - /{ns}/uwb/ranges (std_msgs/Float32MultiArray)
             # - /{ns}/uwb/range (sensor_msgs/Range) or Float32
-            pos_topic = f'/{ns}/uwb/position'
-            ranges_topic = f'/{ns}/uwb/ranges'
-            topic = f'/{ns}/{range_topic}'
+            pos_topic = f"/{ns}/uwb/position"
+            ranges_topic = f"/{ns}/uwb/ranges"
+            topic = f"/{ns}/{range_topic}"
 
-            self.create_subscription(PointStamped, pos_topic, self._make_position_cb(ns), 10)
-            self.create_subscription(Float32MultiArray, ranges_topic, self._make_ranges_cb(ns), 10)
+            self.create_subscription(
+                PointStamped, pos_topic, self._make_position_cb(ns), 10
+            )
+            self.create_subscription(
+                Float32MultiArray, ranges_topic, self._make_ranges_cb(ns), 10
+            )
             self.create_subscription(Range, topic, self._make_range_cb(ns), 10)
             # also support Float32 if node publishes raw float
             self.create_subscription(Float32, topic, self._make_range_cb_float(ns), 10)
@@ -75,6 +82,7 @@ class UwbAnchorMapper(Node):
     def _make_range_cb(self, ns):
         def cb(msg: Range):
             self.latest_range[ns] = float(msg.range)
+
         return cb
 
     def _make_ranges_cb(self, ns):
@@ -84,36 +92,49 @@ class UwbAnchorMapper(Node):
                 self.latest_ranges[ns] = [float(x) for x in msg.data]
             except Exception:
                 self.latest_ranges[ns] = None
+
         return cb
 
     def _make_position_cb(self, ns):
         def cb(msg: PointStamped):
-            if not hasattr(self, 'latest_position'):
+            if not hasattr(self, "latest_position"):
                 self.latest_position = defaultdict(lambda: None)
             # assume msg.point is in anchor/world frame
             self.latest_position[ns] = msg.point
+
         return cb
 
     def _make_range_cb_float(self, ns):
         def cb(msg: Float32):
             self.latest_range[ns] = float(msg.data)
+
         return cb
 
     def timer_cb(self):
         now = self.get_clock().now()
         for ns in self.namespaces:
             # priority: explicit PointStamped position > ranges array > single range
-            pos = getattr(self, 'latest_position', {}).get(ns) if hasattr(self, 'latest_position') else None
-            ranges = getattr(self, 'latest_ranges', {}).get(ns) if hasattr(self, 'latest_ranges') else None
+            pos = (
+                getattr(self, "latest_position", {}).get(ns)
+                if hasattr(self, "latest_position")
+                else None
+            )
+            ranges = (
+                getattr(self, "latest_ranges", {}).get(ns)
+                if hasattr(self, "latest_ranges")
+                else None
+            )
             r = self.latest_range.get(ns)
             if r is None:
                 if pos is None and (ranges is None):
                     continue
             # lookup map -> base_link in this namespace
-            target_map = f'/{ns}/map'
-            target_base = f'/{ns}/base_link'
+            target_map = f"/{ns}/map"
+            target_base = f"/{ns}/base_link"
             try:
-                tf = self.tf_buffer.lookup_transform(target_map, target_base, rclpy.time.Time())
+                tf = self.tf_buffer.lookup_transform(
+                    target_map, target_base, rclpy.time.Time()
+                )
             except Exception as e:
                 self.get_logger().debug(f"TF lookup failed for {ns}: {e}")
                 continue
@@ -158,7 +179,7 @@ class UwbAnchorMapper(Node):
             t = TransformStamped()
             t.header.stamp = now.to_msg()
             t.header.frame_id = self.anchor_frame
-            t.child_frame_id = f'/{ns}/map'
+            t.child_frame_id = f"/{ns}/map"
             t.transform.translation.x = float(map_tx)
             t.transform.translation.y = float(map_ty)
             t.transform.translation.z = 0.0
@@ -173,14 +194,19 @@ class UwbAnchorMapper(Node):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--namespaces', nargs='+', required=True)
-    parser.add_argument('--anchor-frame', default='world')
-    parser.add_argument('--rate', type=float, default=5.0)
-    parser.add_argument('--range-topic', default='uwb/range')
+    parser.add_argument("--namespaces", nargs="+", required=True)
+    parser.add_argument("--anchor-frame", default="world")
+    parser.add_argument("--rate", type=float, default=5.0)
+    parser.add_argument("--range-topic", default="uwb/range")
     args = parser.parse_args()
 
     rclpy.init()
-    node = UwbAnchorMapper(args.namespaces, anchor_frame=args.anchor_frame, rate=args.rate, range_topic=args.range_topic)
+    node = UwbAnchorMapper(
+        args.namespaces,
+        anchor_frame=args.anchor_frame,
+        rate=args.rate,
+        range_topic=args.range_topic,
+    )
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
@@ -189,5 +215,5 @@ def main():
     rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

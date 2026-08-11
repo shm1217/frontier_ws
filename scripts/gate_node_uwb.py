@@ -12,7 +12,8 @@ class GateNodeUwb(GateNode):
         self.merge_valid = False
         super().__init__()
         self._valid_sub = self.create_subscription(
-            Bool, "/merge_map_uwb_valid", self._on_valid, 10)
+            Bool, "/merge_map_uwb_valid", self._on_valid, 10
+        )
 
     def _on_valid(self, msg):
         self.merge_valid = bool(msg.data)

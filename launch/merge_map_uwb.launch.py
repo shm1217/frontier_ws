@@ -45,50 +45,12 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "model_states_topic", default_value="/gazebo/model_states"),
         DeclareLaunchArgument(
-            "initial_world_x", default_value="[0.0,0.0]"), ## 시뮬레이션 상에서 uwb 센서 재현하기 위해 
+            "initial_world_x", default_value="[0.0,0.0]"), 
         DeclareLaunchArgument(
             "initial_world_y", default_value="[0.0,0.0]"),
         DeclareLaunchArgument(
             "initial_world_yaw", default_value="[0.0,0.0]"),
 
-        ## 하드웨어 
-        # 로봇마다 앞/뒤 태그용 시리얼 노드를 하나씩 실행
-        # ExecuteProcess(
-        #     cmd=[
-        #         "python3", ranger, "--ros-args",
-        #         "-r", "__node:=uwb_range_tb3_0_front",
-        #         "-p", ["serial_port:=", LaunchConfiguration("tb3_0_front_serial_port")],
-        #         "-p", "anchor_index:=0",
-        #         "-p", "tag_name:=front",
-        #         "--remap", "uwb/front/range:=/tb3_0/uwb/front/range",
-        #     ],
-        #     output="screen",
-        # ),
-        # ExecuteProcess(
-        #     cmd=[
-        #         "python3", ranger, "--ros-args",
-        #         "-r", "__node:=uwb_range_tb3_0_back",
-        #         "-p", ["serial_port:=", LaunchConfiguration("tb3_0_back_serial_port")],
-        #         "-p", "anchor_index:=0",
-        #         "-p", "tag_name:=back",
-        #         "--remap", "uwb/back/range:=/tb3_0/uwb/back/range",
-        #     ], output="screen"),
-        # ExecuteProcess(
-        #     cmd=["python3", ranger, "--ros-args",
-        #         "-r", "__node:=uwb_range_tb3_1_front",
-        #         "-p", ["serial_port:=", LaunchConfiguration("tb3_1_front_serial_port")],
-        #         "-p", "anchor_index:=0", "-p", "tag_name:=front",
-        #         "--remap", "uwb/front/range:=/tb3_1/uwb/front/range",
-        #     ], output="screen"),
-        # ExecuteProcess(
-        #     cmd=["python3", ranger, "--ros-args",
-        #         "-r", "__node:=uwb_range_tb3_1_back",
-        #         "-p", ["serial_port:=", LaunchConfiguration("tb3_1_back_serial_port")],
-        #         "-p", "anchor_index:=0", "-p", "tag_name:=back",
-        #         "--remap", "uwb/back/range:=/tb3_1/uwb/back/range",
-        #     ],
-        #     output="screen",
-        # ),
 
         ## 시뮬레이션
         ExecuteProcess(
@@ -110,6 +72,7 @@ def generate_launch_description():
             output="screen",
             condition=IfCondition(LaunchConfiguration("use_mock_uwb")),
         ),
+        ##
 
         ExecuteProcess(
             cmd=[

@@ -34,37 +34,42 @@ LINE_RE = re.compile(
 
 class TrilaterationNode(Node):
     def __init__(self):
-        super().__init__('uwb_trilateration_node')
+        super().__init__("uwb_trilateration_node")
 
         # ---- 파라미터 선언 ----
-        self.declare_parameter('serial_port', '/dev/ttyUSB0')
-        self.declare_parameter('baud_rate', 115200)
-        self.declare_parameter('frame_id', 'map')
+        self.declare_parameter("serial_port", "/dev/ttyUSB0")
+        self.declare_parameter("baud_rate", 115200)
+        self.declare_parameter("frame_id", "map")
 
         # 앵커 좌표 (미터 단위). 기본값은 한 변 3m 정삼각형 예시 배치.
         # 실측 후 launch 파일이나 커맨드라인에서 덮어쓰세요.
         # anchor_x[i], anchor_y[i] 는 anchor_id = 0xA0 + i 에 대응됩니다.
-        self.declare_parameter('anchor_x', [0.0, 3.0, 1.5])
-        self.declare_parameter('anchor_y', [0.0, 0.0, 2.6])
+        self.declare_parameter("anchor_x", [0.0, 3.0, 1.5])
+        self.declare_parameter("anchor_y", [0.0, 0.0, 2.6])
 
-        self.serial_port = self.get_parameter('serial_port').value
-        self.baud_rate = self.get_parameter('baud_rate').value
-        self.frame_id = self.get_parameter('frame_id').value
-        self.anchor_x = list(self.get_parameter('anchor_x').value)
-        self.anchor_y = list(self.get_parameter('anchor_y').value)
+        self.serial_port = self.get_parameter("serial_port").value
+        self.baud_rate = self.get_parameter("baud_rate").value
+        self.frame_id = self.get_parameter("frame_id").value
+        self.anchor_x = list(self.get_parameter("anchor_x").value)
+        self.anchor_y = list(self.get_parameter("anchor_y").value)
 
         if len(self.anchor_x) != len(self.anchor_y):
-            self.get_logger().error('anchor_x, anchor_y 길이가 다릅니다. 파라미터를 확인하세요.')
+            self.get_logger().error(
+                "anchor_x, anchor_y 길이가 다릅니다. 파라미터를 확인하세요."
+            )
 
         self.num_anchors = len(self.anchor_x)
         self.get_logger().info(
-            f'앵커 {self.num_anchors}개 좌표: '
-            + ', '.join(f'A{i}=({x:.2f},{y:.2f})' for i, (x, y) in enumerate(zip(self.anchor_x, self.anchor_y)))
+            f"앵커 {self.num_anchors}개 좌표: "
+            + ", ".join(
+                f"A{i}=({x:.2f},{y:.2f})"
+                for i, (x, y) in enumerate(zip(self.anchor_x, self.anchor_y))
+            )
         )
 
         # ---- Publisher ----
-        self.position_pub = self.create_publisher(PointStamped, 'uwb/position', 10)
-        self.ranges_pub = self.create_publisher(Float32MultiArray, 'uwb/ranges', 10)
+        self.position_pub = self.create_publisher(PointStamped, "uwb/position", 10)
+        self.ranges_pub = self.create_publisher(Float32MultiArray, "uwb/ranges", 10)
 
         # ---- 시리얼 연결 ----
         if serial is None:
@@ -75,9 +80,11 @@ class TrilaterationNode(Node):
         else:
             try:
                 self.ser = serial.Serial(self.serial_port, self.baud_rate, timeout=1.0)
-                self.get_logger().info(f'{self.serial_port} @ {self.baud_rate} 연결 완료')
+                self.get_logger().info(
+                    f"{self.serial_port} @ {self.baud_rate} 연결 완료"
+                )
             except serial.SerialException as e:
-                self.get_logger().error(f'시리얼 포트 열기 실패: {e}')
+                self.get_logger().error(f"시리얼 포트 열기 실패: {e}")
                 self.ser = None
 
         # 주기적으로 시리얼 버퍼 확인 (50Hz 폴링, 실제 갱신 속도는 TDMA 프레임 주기를 따름)
@@ -88,9 +95,9 @@ class TrilaterationNode(Node):
             return
 
         try:
-            raw_line = self.ser.readline().decode('utf-8', errors='ignore').strip()
+            raw_line = self.ser.readline().decode("utf-8", errors="ignore").strip()
         except Exception as e:
-            self.get_logger().warn(f'시리얼 읽기 에러: {e}')
+            self.get_logger().warn(f"시리얼 읽기 에러: {e}")
             return
 
         if not raw_line:
@@ -104,8 +111,8 @@ class TrilaterationNode(Node):
             # 예상 포맷이 아닌 라인(부팅 로그 등)은 조용히 무시
             return
 
-        ranges_cm = [int(v) for v in match.group('ranges').split(',')]
-        mask = int(match.group('mask'), 16)
+        ranges_cm = [int(v) for v in match.group("ranges").split(",")]
+        mask = int(match.group("mask"), 16)
 
         # cm -> m 변환, 필요한 앵커 개수만큼만 사용
         ranges_m = [v / 100.0 for v in ranges_cm[: self.num_anchors]]
@@ -118,7 +125,9 @@ class TrilaterationNode(Node):
         # 필요한 모든 앵커로부터 응답을 받았는지 확인 (mask의 하위 num_anchors 비트가 다 서있어야 함)
         required_mask = (1 << self.num_anchors) - 1
         if (mask & required_mask) != required_mask:
-            self.get_logger().debug(f'일부 앵커 응답 누락 (mask={mask:#x}), 이번 프레임 스킵')
+            self.get_logger().debug(
+                f"일부 앵커 응답 누락 (mask={mask:#x}), 이번 프레임 스킵"
+            )
             return
 
         position = self.trilaterate(ranges_m)
@@ -142,7 +151,7 @@ class TrilaterationNode(Node):
         """
         n = self.num_anchors
         if n < 3:
-            self.get_logger().warn('앵커가 3개 미만이라 2D 위치를 확정할 수 없습니다.')
+            self.get_logger().warn("앵커가 3개 미만이라 2D 위치를 확정할 수 없습니다.")
             return None
 
         x1, y1 = self.anchor_x[0], self.anchor_y[0]
@@ -156,7 +165,7 @@ class TrilaterationNode(Node):
             xi, yi = self.anchor_x[i], self.anchor_y[i]
             di = ranges_m[i]
             A.append([2 * (xi - x1), 2 * (yi - y1)])
-            b.append(d1 ** 2 - di ** 2 + xi ** 2 - x1 ** 2 + yi ** 2 - y1 ** 2)
+            b.append(d1**2 - di**2 + xi**2 - x1**2 + yi**2 - y1**2)
 
         try:
             if n == 3:
@@ -164,7 +173,9 @@ class TrilaterationNode(Node):
                 (a11, a12), (a21, a22) = A
                 det = a11 * a22 - a12 * a21
                 if abs(det) < 1e-9:
-                    self.get_logger().warn('앵커들이 일직선에 가까워 위치 계산이 불안정합니다.')
+                    self.get_logger().warn(
+                        "앵커들이 일직선에 가까워 위치 계산이 불안정합니다."
+                    )
                     return None
                 x = (b[0] * a22 - b[1] * a12) / det
                 y = (a11 * b[1] - a21 * b[0]) / det
@@ -172,7 +183,7 @@ class TrilaterationNode(Node):
                 # 4개 이상: least squares (외부 라이브러리 없이 정규방정식으로 직접 계산)
                 x, y = self._least_squares_2x2(A, b)
         except ZeroDivisionError:
-            self.get_logger().warn('위치 계산 중 0으로 나누기 발생, 이번 프레임 스킵')
+            self.get_logger().warn("위치 계산 중 0으로 나누기 발생, 이번 프레임 스킵")
             return None
 
         return x, y
@@ -188,7 +199,7 @@ class TrilaterationNode(Node):
 
         det = s_xx * s_yy - s_xy * s_xy
         if abs(det) < 1e-9:
-            raise ZeroDivisionError('정규방정식 행렬이 특이(singular)합니다.')
+            raise ZeroDivisionError("정규방정식 행렬이 특이(singular)합니다.")
 
         x = (s_xb * s_yy - s_yb * s_xy) / det
         y = (s_xx * s_yb - s_xy * s_xb) / det
@@ -207,5 +218,5 @@ def main(args=None):
         rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

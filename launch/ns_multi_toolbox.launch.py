@@ -27,7 +27,7 @@ def launch_setup(context, *args, **kwargs):
     # =========================================================
     # 1) base -> scan static TF
     # =========================================================
-    #actions.append(Node(
+    # actions.append(Node(
     #    package="tf2_ros",
     #    executable="static_transform_publisher",
     #    name=f"{ns}_base_to_scan",
@@ -38,7 +38,7 @@ def launch_setup(context, *args, **kwargs):
     #        "--frame-id", f"{ns}/base_footprint",
     #        "--child-frame-id", f"{ns}/base_scan",
     #    ],
-    #))
+    # ))
 
     # =========================================================
     # 2) SLAM Toolbox
@@ -52,7 +52,7 @@ def launch_setup(context, *args, **kwargs):
         "scan_topic":  f"/{ns}/scan",
 
         "resolution": 0.05,
-        "scan_queue_size": 1,
+        "scan_queue_size": 5,
 
         "max_laser_range": 8.0,
         "min_laser_range": 0.12,
@@ -70,8 +70,9 @@ def launch_setup(context, *args, **kwargs):
 
         "use_scan_matching": True,
         "use_scan_barycenter": True,
-        "minimum_travel_distance": 0.05,
-        "minimum_travel_heading": 0.1,
+        "minimum_travel_distance": 0.0,
+        "minimum_travel_heading": 0.0,
+        "minimum_time_interval": 0.1,
 
         "mode": "mapping",
         "debug_logging": False,
@@ -243,14 +244,6 @@ def launch_setup(context, *args, **kwargs):
                         "align_depth.enable": "true",
                         "rgb_camera.color_profile": "424x240x5",
                         "depth_module.depth_profile": "424x240x5",
-
-                        # "enable_color": "true",
-                        # "enable_depth": "true",
-                        # "enable_infra1": "false",
-                        # "enable_infra2": "false",
-                        # "enable_gyro": "false",
-                        # "enable_accel": "false",
-                        # "pointcloud.enable": "false",
                     }.items(),
                 )
             ],

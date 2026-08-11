@@ -121,7 +121,7 @@ DetectNode::DetectNode() : Node("detect_node"), tf_buffer(this->get_clock()), tf
     R(2, 2) = R_sigma * R_sigma;
 
     std::string package_path =
-    ament_index_cpp::get_package_share_directory("frontier_ws");
+        ament_index_cpp::get_package_share_directory("frontier_ws");
     std::string best1_path = package_path + "/appearance_file/female.png";
     std::string best2_path = package_path + "/appearance_file/male.png";
     represent.push_back({ 0, best1_path, Eigen::VectorXf(), sensor_msgs::msg::Image() });
@@ -185,27 +185,15 @@ void DetectNode::yolo_callback(const yolo_msgs::msg::DetectionArray::SharedPtr m
         const auto &pt3d = det.bbox3d.center.position;
         const auto &size = det.bbox3d.size;
 
-        if (det.class_id == 0) // 0:person, 41:cup, 64:mouse, 67:cell phone
+        if (det.class_id == 0) 
         {
             geometry_msgs::msg::PointStamped p_in, p_out;
             p_in.header.frame_id = camera_link_frame_;
-            // p_in.header.stamp = msg->header.stamp;
             p_in.header.stamp.sec = 0;
             p_in.header.stamp.nanosec = 0;
             p_in.point = pt3d;
 
             p_out = tf_buffer.transform(p_in, obstacle_frame_);
-            // try
-            // {
-            //     p_out = tf_buffer.transform(p_in, "camera_init");
-            // }
-            // catch (const tf2::TransformException &ex)
-            // {
-            //     RCLCPP_WARN_THROTTLE(
-            //         this->get_logger(), *this->get_clock(), 1000,
-            //         "Could not transform obstacle from camera_link to camera_init: %s", ex.what());
-            //     continue;
-            // }
 
             yolo_track t;
             t.curr.x_ = p_out.point.x;
@@ -226,7 +214,7 @@ void DetectNode::yolo_callback(const yolo_msgs::msg::DetectionArray::SharedPtr m
 void DetectNode::img_callback(const sensor_msgs::msg::Image::ConstSharedPtr msg)
 {
     imgs = msg;
-    img_ready = true; // 필요성, 어차피 yolo가 된다는건 img 들어왔다는 거 아닌가
+    img_ready = true; 
 }
 
 void DetectNode::emb_callback(const frontier_ws::msg::EmbArray::SharedPtr msg)
@@ -258,12 +246,9 @@ void DetectNode::emb_callback(const frontier_ws::msg::EmbArray::SharedPtr msg)
         }
     }
 
-    // if (det_track.empty())
-    //     return;
-
-    for (auto &r : retrack) // 프레임 당
+    for (auto &r : retrack) 
     {
-        for (auto &f : r) // f = save_track
+        for (auto &f : r) 
         {
             if (msg->frame_id != f.frame_id)
                 continue;
@@ -273,7 +258,7 @@ void DetectNode::emb_callback(const frontier_ws::msg::EmbArray::SharedPtr msg)
                 if (f.det_id == msg->det_ids[i])
                 {
                     f.det_emb = emb;
-                    // RCLCPP_INFO(this->get_logger(), "det emb 존재 frame: %d", msg->frame_id);
+                    
                 }
             }
             for (size_t i = 0; i < msg->track_ids.size(); ++i)
@@ -296,20 +281,11 @@ bool DetectNode::project_pixel(const geometry_msgs::msg::Point &meter_pt, Eigen:
         return false;
     geometry_msgs::msg::PointStamped p_in, p_out;
     p_in.header.frame_id = obstacle_frame_;
-    // p_in.header.stamp = imgs->header.stamp;
     p_in.header.stamp.sec = 0;
     p_in.header.stamp.nanosec = 0;
     p_in.point = meter_pt;
 
     tf_buffer.transform(p_in, p_out, camera_optical_frame_);
-    // try
-    // {
-    //     tf_buffer.transform(p_in, p_out, "camera_color_optical_frame");
-    // }
-    // catch (const tf2::TransformException &ex)
-    // {
-    //     return false;
-    // }
 
     const double X = p_out.point.x;
     const double Y = p_out.point.y;
@@ -405,9 +381,6 @@ void DetectNode::pub_bbox_img(int frame_id, std::unordered_map<int, yolo_track> 
 
         if (width <= 0 || height <= 0)
         {
-            // RCLCPP_WARN(this->get_logger(),
-            //             "Invalid ROI: left=%d top=%d right=%d bottom=%d img=(%d,%d)",
-            //             left, top, right, bottom, img.cols, img.rows);
             return false;
         }
 
@@ -418,7 +391,6 @@ void DetectNode::pub_bbox_img(int frame_id, std::unordered_map<int, yolo_track> 
         return true;
     };
 
-    // det crop들
     for (auto &[det_id, det_obj] : det_map)
     {
         sensor_msgs::msg::Image crop_msg;
@@ -440,7 +412,6 @@ void DetectNode::pub_bbox_img(int frame_id, std::unordered_map<int, yolo_track> 
         }
     }
 
-    // track crop들
     for (auto &[track_id, track_obj] : track_map)
     {
         sensor_msgs::msg::Image crop_msg;
@@ -482,7 +453,6 @@ void DetectNode::pub_bbox_img(int frame_id, std::unordered_map<int, yolo_track> 
         // return;
     }
 
-    // RCLCPP_INFO(this->get_logger(), "pub frame id: %d", frame_id);
     img_pub->publish(boximg);
 }
 
@@ -508,7 +478,7 @@ sensor_msgs::msg::Image::SharedPtr DetectNode::pngToRosImage(const std::string &
     return msg;
 }
 
-void DetectNode::tracking(std::vector<yolo_track> &track) // track을 id 포함된 det_track으로
+void DetectNode::tracking(std::vector<yolo_track> &track)
 {
     det_track.clear();
     std::vector<save_track> cost_track;
@@ -576,10 +546,10 @@ void DetectNode::tracking(std::vector<yolo_track> &track) // track을 id 포함�
             pp.x_ = t.obj_X[0];
             pp.y_ = t.obj_X[1];
             pp.z_ = t.obj_X[2];
-            double iou = calculate_iou(o.boxsize, t.boxsize, cc, pp); // 많이 겹쳐있으면 1에 가까워짐 0~1
+            double iou = calculate_iou(o.boxsize, t.boxsize, cc, pp);
             double area_p = t.boxsize.x() * t.boxsize.y() * t.boxsize.z();
             double area_c = o.boxsize.x() * o.boxsize.y() * o.boxsize.z();
-            double size_ratio = std::abs(area_p - area_c) / std::max(area_p, area_c); // 0~1
+            double size_ratio = std::abs(area_p - area_c) / std::max(area_p, area_c); 
             double direct = 0.0;
             if (t.curr.stamp.get_clock_type() != t.prev.stamp.get_clock_type())
             {
@@ -604,21 +574,14 @@ void DetectNode::tracking(std::vector<yolo_track> &track) // track을 id 포함�
                 if (vel_kf.norm() > 1e-3 && vel_o.norm() > 1e-3)
                 {
                     direct = vel_kf.dot(vel_o) / (vel_kf.norm() * vel_o.norm());
-                    direct = std::clamp(direct, -1.0, 1.0); // 부동소수점 주의
-                    direct = 0.5 * (1.0 - direct);          // cos(-@)=cos(@), 0~180까지만 가정함
+                    direct = std::clamp(direct, -1.0, 1.0); 
+                    direct = 0.5 * (1.0 - direct);         
                 }
             }
             if (!std::isfinite(direct))
                 direct = 0.0;
 
-            double cost = dis_n + (1 - iou) + size_ratio * direct; // cost 스케일 맞추기
-            // if (!std::isfinite(cost))
-            // {
-            //     RCLCPP_WARN(this->get_logger(),
-            //                 "NaN cost distance=%.3f size=%.3f iou=%.3f dir=%.3f total=%.3f",
-            //                 dis_n, size_ratio, 1 - iou, direct, cost);
-            // }
-
+            double cost = dis_n + (1 - iou) + size_ratio * direct;
             best_.push_back({ d_id, id, cost });
 
             save_track save;
@@ -631,12 +594,11 @@ void DetectNode::tracking(std::vector<yolo_track> &track) // track을 id 포함�
             save.boxsize = o.boxsize;
             save.curr_size = area_c;
             cost_track.emplace_back(save);
-            // RCLCPP_INFO(this->get_logger(), "det_id: %d, track_id: %d, cost: %.3f", d_id, id, cost);
         }
     }
 
     std::sort(best_.begin(), best_.end(), [](auto &a, auto &b)
-              { return a.cost < b.cost; }); // 오름차순 정렬
+              { return a.cost < b.cost; }); 
     std::unordered_set<int> used_det;
     std::unordered_set<int> used_track;
 
@@ -655,7 +617,6 @@ void DetectNode::tracking(std::vector<yolo_track> &track) // track을 id 포함�
         yolo_tracks[b.track_id].curr = dit->second.curr;
         yolo_tracks[b.track_id].prev_boxsize = yolo_tracks[b.track_id].boxsize;
         yolo_tracks[b.track_id].boxsize = dit->second.boxsize;
-        // yolo_tracks[b.track_id].emb = dit->second.emb; // 과연 이거 전에 det_track.emb 들어와서 이게 잘 될지는 의문임
         matched_id.insert(b.track_id);
 
         for (auto &re : cost_track)
@@ -666,7 +627,7 @@ void DetectNode::tracking(std::vector<yolo_track> &track) // track을 id 포함�
         }
     }
 
-    // bbox 확 커지는 거 보정 용: retrack에 저장하기 전에 yolo_tracks와 cost_track을 같이 보정
+    // bbox 확 커지는 현상 제거
     if (retrack.size() >= 4)
     {
         std::unordered_map<int, std::vector<double>> x_history;
@@ -768,7 +729,7 @@ void DetectNode::tracking(std::vector<yolo_track> &track) // track을 id 포함�
         yolo_tracks.emplace(new_id, new_);
         matched_id.insert(new_id);
 
-        match_ready = false; // 대표 이미지랑 다시 매칭
+        match_ready = false; 
         track_to_rep.clear();
         prev_track_emb_map_.clear();
     }
@@ -825,7 +786,7 @@ void DetectNode::tracking(std::vector<yolo_track> &track) // track을 id 포함�
         // 외형 cost 안 쓸때
         obj res;
         Eigen::Matrix3d s;
-        calculate_Kalman(tr.cluster_X, tr.cluster_P, tr.prev, tr.curr, true, res, s); // res !=0 일 때만 visualize_box에서 res 사용하도록 하기
+        calculate_Kalman(tr.cluster_X, tr.cluster_P, tr.prev, tr.curr, true, res, s); 
         if (!kalman)
             continue;
         auto color = get_color(id);
@@ -852,19 +813,9 @@ void DetectNode::calculate_cost()
     if (!rep_ready)
         return;
 
-    const int frame_num = 20; // 사용할 embedding 있는 프레임 개수
+    const int frame_num = 20; 
     int used_emb_count = 0;
     int used_match_count = 0;
-
-    // for (auto &re : retrack)
-    // {
-    //     for (auto &t : re)
-    //     {
-    //         if (t.det_emb.size() == 0)
-    //             continue;
-    //         RCLCPP_INFO(this->get_logger(), "frame_id: %d, det_id: %d", t.frame_id, t.det_id);
-    //     }
-    // }
 
     // 대표 이미지 track이랑 매칭
     std::unordered_map<int, std::unordered_map<int, float>> sim_sum; // track_id -> (rep_id -> similarity 누적)
@@ -1072,13 +1023,11 @@ void DetectNode::calculate_cost()
 
     std::vector<std::pair<int, int>> best_pairs;
 
-    // 0. 이전 프레임 track embedding map이 없으면 아직 비교 불가
     if (prev_track_emb_map_.empty())
     {
         RCLCPP_INFO(this->get_logger(),
                     "prev_track_emb_map_ is empty, skip appearance compare");
 
-        // 이번 프레임의 track_emb를 다음 프레임 reference로 저장
         for (auto &f : r)
         {
             if (f.rep_emb.size() == 0 || f.rep_img.data.empty())
@@ -1090,7 +1039,6 @@ void DetectNode::calculate_cost()
         }
         return;
     }
-    // 1. 이전 track emb와 현재 det emb로 appearance cost 계산
     bool has_valid_pair = false;
 
     for (auto &f : r)
@@ -1122,7 +1070,6 @@ void DetectNode::calculate_cost()
         RCLCPP_INFO(this->get_logger(),
                     "No valid appearance pair in frame=%d", r.front().frame_id);
 
-        // 그래도 다음 프레임을 위해 이번 frame rep_emb 저장
         prev_track_emb_map_.clear();
         for (auto &f : r)
         {
@@ -1136,7 +1083,6 @@ void DetectNode::calculate_cost()
         return;
     }
 
-    // 2. appearance 포함 후 best pair 다시 계산
     std::sort(r.begin(), r.end(), [](const auto &a, const auto &b)
               { return a.cost < b.cost; });
 
@@ -1145,7 +1091,6 @@ void DetectNode::calculate_cost()
 
     for (auto &f : r)
     {
-        // appearance 계산이 실제로 된 pair만 사용
         if (f.app_cost < 0.0)
             continue;
 
@@ -1157,7 +1102,6 @@ void DetectNode::calculate_cost()
         best_pairs.emplace_back(f.det_id, f.track_id);
     }
 
-    // 그냥 여기서 best_pair에 맞게 시각화하기
     for (auto &[best_det_id, best_track_id] : best_pairs)
     {
         for (auto &f : r)
@@ -1179,7 +1123,7 @@ void DetectNode::calculate_cost()
                 k_track.has_prev = true;
                 continue;
             }
-            calculate_Kalman(k_track.obj_X, k_track.obj_P, k_track.prev, f.pose, true, res, s); // 이전  frame id에서 가져오기??
+            calculate_Kalman(k_track.obj_X, k_track.obj_P, k_track.prev, f.pose, true, res, s); 
             if (!kalman)
                 continue;
             auto color = get_color(best_track_id);
@@ -1202,62 +1146,6 @@ void DetectNode::calculate_cost()
         }
     }
 
-    // 3. 1차 best_pair와 appearance 포함 후 best 비교
-    // for (auto &f : r)
-    // {
-    // if (!f.best_pair) // 1차 cost 계산에서 best_pair였는지 확인
-    //     continue;
-    // if (f.app_cost < 0.0)
-    //     continue;
-
-    // bool is_in_best = false;
-
-    // for (auto &[best_det_id, best_track_id] : best_pairs)
-    // {
-    //     if (f.det_id == best_det_id && f.track_id == best_track_id)
-    //     {
-    //         is_in_best = true;
-    //         break;
-    //     }
-    // }
-
-    // if (!is_in_best) // id 재매칭 해야함 (track이랑 det 재매칭)
-    // {
-    //     RCLCPP_WARN(this->get_logger(),
-    //                 "appearance would flip: frame=%d det=%d old_track=%d app=%.6f",
-    //                 f.frame_id, f.det_id, f.track_id, f.app_cost);
-
-    //     // // 실험용 임시 swap
-    //     // int first_id = -1;
-    //     // int second_id = -1;
-    //     // bool init = false;
-
-    //     // if (yolo_tracks.size() > 1)
-    //     // {
-    //     //     for (auto &[id, y] : yolo_tracks)
-    //     //     {
-    //     //         if (!init)
-    //     //         {
-    //     //             first_id = id;
-    //     //             init = true;
-    //     //             continue;
-    //     //         }
-    //     //         second_id = id;
-    //     //         break;
-    //     //     }
-
-    //     //     if (first_id != -1 && second_id != -1)
-    //     //     {
-    //     //         std::swap(yolo_tracks[first_id], yolo_tracks[second_id]);
-    //     //         RCLCPP_WARN(this->get_logger(),
-    //     //                     "TEMP swap executed: %d <-> %d",
-    //     //                     first_id, second_id);
-    //     //     }
-    //     // }
-    // }
-    // }
-
-    // 4. 이번 프레임 track_emb를 다음 프레임 reference로 저장
     prev_track_emb_map_.clear();
 
     for (auto &f : r)
@@ -1288,10 +1176,10 @@ double DetectNode::cosine_similarity(const Eigen::VectorXf &a, const Eigen::Vect
 
 double DetectNode::calculate_iou(const Eigen::Vector3d &s, const Eigen::Vector3d &prev_s, const obj &c_kf, const obj &p_kf)
 {
-    double p_x1 = p_kf.x_ - (prev_s.x() / 2); // 사각형 왼쪽 아래 뒷쪽
+    double p_x1 = p_kf.x_ - (prev_s.x() / 2); 
     double p_y1 = p_kf.y_ - (prev_s.y() / 2);
     double p_z1 = p_kf.z_ - (prev_s.z() / 2);
-    double p_x2 = p_kf.x_ + (prev_s.x() / 2); // 사각형 오른쪽 위 앞쪽
+    double p_x2 = p_kf.x_ + (prev_s.x() / 2); 
     double p_y2 = p_kf.y_ + (prev_s.y() / 2);
     double p_z2 = p_kf.z_ + (prev_s.z() / 2);
 
@@ -1314,13 +1202,13 @@ double DetectNode::calculate_iou(const Eigen::Vector3d &s, const Eigen::Vector3d
 
     if (x1 < x2 && y1 < y2 && z1 < z2)
     {
-        intersection = (x2 - x1) * (y2 - y1) * (z2 - z1); // 교집합
+        intersection = (x2 - x1) * (y2 - y1) * (z2 - z1); 
     }
 
     double vol_c = s.x() * s.y() * s.z();
     double vol_p = prev_s.x() * prev_s.y() * prev_s.z();
 
-    double union_ = vol_c + vol_p - intersection; // 합집합
+    double union_ = vol_c + vol_p - intersection; 
 
     if (union_ <= 1e-9)
         return 0.0;
@@ -1331,7 +1219,6 @@ double DetectNode::calculate_iou(const Eigen::Vector3d &s, const Eigen::Vector3d
 void DetectNode::calculate_Kalman(Vector6d &X, Matrix6d &P, const obj &prev, const obj &curr, bool vis, obj &res, Eigen::Matrix3d &S)
 {
     kalman = false;
-    // time source가 같은지 체크(디버그용)
     if (curr.stamp.get_clock_type() != prev.stamp.get_clock_type())
     {
         RCLCPP_WARN(this->get_logger(), "kal - Time source mismatch: curr=%d prev=%d",
@@ -1376,15 +1263,13 @@ void DetectNode::calculate_Kalman(Vector6d &X, Matrix6d &P, const obj &prev, con
     kalman = true;
     if (vis)
     {
-        visualize_obj(res, { 0.0f, 1.0f, 0.0f }, "kalman_obj", curr.id);             // 보정된 좌표: green
-        visualize_vel(res, kalman_vel, { 0.0f, 1.0f, 0.0f }, "kalman_vel", curr.id); // 보정된 속도: green
-        // RCLCPP_INFO(this->get_logger(), "속도: %.2f", speed);
+        visualize_obj(res, { 0.0f, 1.0f, 0.0f }, "kalman_obj", curr.id);             
+        visualize_vel(res, kalman_vel, { 0.0f, 1.0f, 0.0f }, "kalman_vel", curr.id); 
     }
 }
 
 void DetectNode::calculate_vel(const obj &prev, const obj &curr, vel &v)
 {
-    // time source가 같은지 체크(디버그용)
     if (curr.stamp.get_clock_type() != prev.stamp.get_clock_type())
     {
         RCLCPP_WARN(this->get_logger(), "vel - Time source mismatch: curr=%d prev=%d",
@@ -1416,7 +1301,7 @@ void DetectNode::calculate_vel(const obj &prev, const obj &curr, vel &v)
 
 std::array<float, 3> DetectNode::get_color(int id)
 {
-    float h = (id * 37) % 360; // hue 분산
+    float h = (id * 37) % 360; 
     float s = 0.8f;
     float v = 0.9f;
 
