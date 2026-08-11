@@ -81,7 +81,7 @@ ros2 launch frontier_ws merge_map_uwb.launch.py
       python3 ~/ros2_ws/src/frontier_ws/scripts/uwb_range_node_uwb.py \
         --ros-args \
         -r __node:=uwb_range_tb3_2_front \
-        -p serial_port:=/dev/ttyUSB_tb3_0_front \
+        -p serial_port:=/dev/ttyUSB_tb3_2_front \
         -p anchor_index:=0 \
         -p tag_name:=front \
         -r uwb/front/range:=/tb3_2/uwb/front/range
@@ -90,7 +90,7 @@ ros2 launch frontier_ws merge_map_uwb.launch.py
       python3 ~/ros2_ws/src/frontier_ws/scripts/uwb_range_node_uwb.py \
         --ros-args \
         -r __node:=uwb_range_tb3_2_back \
-        -p serial_port:=/dev/ttyUSB_tb3_0_back \
+        -p serial_port:=/dev/ttyUSB_tb3_2_back \
         -p anchor_index:=0 \
         -p tag_name:=back \
         -r uwb/back/range:=/tb3_2/uwb/back/range
