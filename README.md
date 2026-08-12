@@ -19,6 +19,13 @@ ros2 launch frontier_ws merge_map_uwb.launch.py
 # TODO: 수정 필요
 ```
 
++ 로봇 위치
+```python
+{'ns': 'tb3_0', 'x': '6.0', 'y': '1.0'},
+{'ns': 'tb3_1', 'x': '-4.0', 'y': '4.5'},
+{'ns': 'tb3_2', 'x': '-6.0', 'y': '0.0'},
+```
+
 
 + **하드웨어 사용 시** 
     + ns_multi_toolbox.launch.py과 uwb_range_node.py(front, back 태그 각각 실행)는 각 로봇에서 실행
