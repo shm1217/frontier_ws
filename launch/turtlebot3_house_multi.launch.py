@@ -20,7 +20,7 @@ def load_robots(yaml_path):
     robots = [r for r in data["robots"] if r.get("enabled", True)]
     if len(robots) < 2:
         raise RuntimeError("robots.yaml needs at least two enabled robots.")
-    return robots[:2]
+    return robots
 
 
 def upsert_tag(body, tag, value):

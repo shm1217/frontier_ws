@@ -67,7 +67,7 @@ class MergeMapUwb(Node):
             self.declare_parameter("max_anchor_match_error_m", 0.6).value
         )
         self.min_feature_matches = int(
-            self.declare_parameter("min_feature_matches", 15).value ## 5
+            self.declare_parameter("min_feature_matches", 8).value
         )  
         self.max_features = int(self.declare_parameter("max_features", 2500).value)
         self.orb_fast_threshold = int(
@@ -80,19 +80,19 @@ class MergeMapUwb(Node):
             self.declare_parameter("orb_patch_size", 31).value ## 10
         ) 
         self.feature_ratio = float(
-            self.declare_parameter("feature_ratio", 0.6).value ## 0.78
+            self.declare_parameter("feature_ratio", 0.78).value
         ) 
         self.ransac_batches = int(
             self.declare_parameter("ransac_batches", 100).value ## 60
         ) 
         self.ransac_threshold = float(
-            self.declare_parameter("ransac_threshold_m", 0.10).value ## 0.20
+            self.declare_parameter("ransac_threshold_m", 0.20).value
         ) 
         self.min_ransac_inliers = int(
-            self.declare_parameter("min_ransac_inliers", 8).value ## 4
+            self.declare_parameter("min_ransac_inliers", 4).value
         ) 
         self.min_ransac_inlier_ratio = float(
-            self.declare_parameter("min_ransac_inlier_ratio", 0.50).value ## 0.30
+            self.declare_parameter("min_ransac_inlier_ratio", 0.30).value
         )  
         self.min_scale = float(self.declare_parameter("min_scale", 0.95).value)
         self.max_scale = float(self.declare_parameter("max_scale", 1.05).value)
@@ -123,6 +123,18 @@ class MergeMapUwb(Node):
         )
         self.refine_fine_yaw_step = float(
             self.declare_parameter("refine_fine_yaw_step_deg", 0.25).value
+        )
+        self.feature_refine_xy = float(
+            self.declare_parameter("feature_refine_xy_m", 0.60).value
+        )
+        self.global_min_known_cells = int(
+            self.declare_parameter("global_min_known_cells", 300).value
+        )
+        self.global_min_coverage = float(
+            self.declare_parameter("global_min_coverage", 0.30).value
+        )
+        self.global_min_overlap = float(
+            self.declare_parameter("global_min_overlap", 0.60).value
         )
         self.feature_weight = float(self.declare_parameter("feature_weight", 1.0).value)
         self.overlap_weight = float(self.declare_parameter("overlap_weight", 1.0).value)
@@ -286,7 +298,9 @@ class MergeMapUwb(Node):
         )
         image = np.full(data.shape, 255, dtype=np.uint8)
         image[data >= 60] = 0
-        return image
+        occupied = (image == 0).astype(np.uint8)
+        occupied = cv2.dilate(occupied, np.ones((3, 3), np.uint8), iterations=1)
+        return np.where(occupied > 0, 0, 255).astype(np.uint8)
 
     @staticmethod
     def pixel_to_local(msg, xy):
@@ -309,8 +323,15 @@ class MergeMapUwb(Node):
         )
         kp1, des1 = orb.detectAndCompute(self.map_image(ref), None)
         kp2, des2 = orb.detectAndCompute(self.map_image(mov), None)
+        stats = {
+            "ref_keypoints": len(kp1),
+            "mov_keypoints": len(kp2),
+            "ratio_matches": 0,
+            "ransac_votes": 0,
+            "yaw_hypotheses": 0,
+        }
         if des1 is None or des2 is None:
-            return []
+            return [], stats
         pairs = cv2.BFMatcher(cv2.NORM_HAMMING).knnMatch(des2, des1, k=2)
         matches = []
         for pair in pairs:
@@ -320,14 +341,16 @@ class MergeMapUwb(Node):
             if first.distance < self.feature_ratio * second.distance:
                 matches.append(first)
         matches.sort(key=lambda match: match.distance)
+        stats["ratio_matches"] = len(matches)
         if len(matches) < self.min_feature_matches:
-            return []
+            return [], stats
         src_px = np.float32([kp2[m.queryIdx].pt for m in matches])
         dst_px = np.float32([kp1[m.trainIdx].pt for m in matches])
         src = self.pixel_to_local(mov, src_px)
         dst = self.pixel_to_local(ref, dst_px)
 
         yaw_votes = []
+        affine_candidates = []
         rng = np.random.default_rng(7)
         batches = [np.arange(len(matches))]
         for _ in range(self.ransac_batches):
@@ -354,7 +377,12 @@ class MergeMapUwb(Node):
             if not self.min_scale <= scale <= self.max_scale:
                 continue
             yaw = math.atan2(M[1, 0], M[0, 0])
-            yaw_votes.append((yaw, float(3 * inlier_count)))
+            weight = float(3 * inlier_count)
+            yaw_votes.append((yaw, weight))
+            affine_candidates.append(
+                ((float(M[0, 2]), float(M[1, 2]), yaw), weight)
+            )
+            stats["ransac_votes"] += 1
 
         pair_count = min(len(matches), self.max_pairwise_matches)
         for i in range(pair_count):
@@ -377,7 +405,21 @@ class MergeMapUwb(Node):
                 yaw = math.atan2(math.sin(yaw), math.cos(yaw))
                 yaw_votes.append((yaw, 1.0))
 
-        return self.cluster_yaw_votes(yaw_votes)
+        yaw_hypotheses = self.cluster_yaw_votes(yaw_votes)
+        hypotheses = []
+        for yaw, support in yaw_hypotheses:
+            nearby = [
+                item for item in affine_candidates
+                if abs(math.atan2(
+                    math.sin(item[0][2] - yaw), math.cos(item[0][2] - yaw)
+                )) <= math.radians(self.yaw_cluster_deg * 1.5)
+            ]
+            if not nearby:
+                continue
+            transform, _ = max(nearby, key=lambda item: item[1])
+            hypotheses.append((transform, support))
+        stats["yaw_hypotheses"] = len(hypotheses)
+        return hypotheses, stats
 
     def cluster_yaw_votes(self, yaw_votes):
         """Cluster circular yaw votes and return (yaw, normalized support)."""
@@ -543,9 +585,52 @@ class MergeMapUwb(Node):
             center_yaw = best_transform[2]
         return best_transform, best_metrics
 
+    def refine_feature_candidate(
+        self, ref, mov, initial, anchor_ref, anchor_mov, context
+    ):
+        """Refine the full ORB SE(2) estimate without forcing anchor coincidence."""
+        best_transform = initial
+        best_metrics = self.overlap_score(ref, mov, best_transform, context)
+
+        def quality(transform, metrics):
+            anchor_error = float(np.linalg.norm(
+                self.transform_point(transform, anchor_mov) - anchor_ref
+            ))
+            return (
+                metrics[0] + self.coverage_weight * metrics[4]
+                - self.anchor_weight * anchor_error
+            )
+
+        stages = (
+            (self.feature_refine_xy, math.radians(self.refine_yaw)),
+            (max(0.10, self.feature_refine_xy / 3.0),
+             math.radians(self.refine_yaw_step)),
+        )
+        for xy_radius, yaw_radius in stages:
+            center = best_transform
+            stage_transform, stage_metrics = best_transform, best_metrics
+            for dx in (-xy_radius, 0.0, xy_radius):
+                for dy in (-xy_radius, 0.0, xy_radius):
+                    for dyaw in (-yaw_radius, 0.0, yaw_radius):
+                        candidate = (
+                            center[0] + dx,
+                            center[1] + dy,
+                            math.atan2(
+                                math.sin(center[2] + dyaw),
+                                math.cos(center[2] + dyaw),
+                            ),
+                        )
+                        metrics = self.overlap_score(ref, mov, candidate, context)
+                        if quality(candidate, metrics) > quality(
+                            stage_transform, stage_metrics
+                        ):
+                            stage_transform, stage_metrics = candidate, metrics
+            best_transform, best_metrics = stage_transform, stage_metrics
+        return best_transform, best_metrics
+
     def select_transform(self, ref_ns, mov_ns):
         ref, mov = self.maps[ref_ns], self.maps[mov_ns]
-        yaw_hypotheses = self.feature_candidates(ref, mov)
+        yaw_hypotheses, feature_stats = self.feature_candidates(ref, mov)
         a_ref, a_mov = self.anchors[ref_ns][0], self.anchors[mov_ns][0]
         overlap_context = self.make_overlap_context(ref)
 
@@ -565,7 +650,8 @@ class MergeMapUwb(Node):
                     )
                     ** 2
                 )
-                for feature_yaw, support in yaw_hypotheses
+                for feature_transform, support in yaw_hypotheses
+                for feature_yaw in (feature_transform[2],)
             )
 
         def make_item(transform, metrics, support, mode):
@@ -593,16 +679,25 @@ class MergeMapUwb(Node):
             }
 
         def is_valid(item):
-            return (
+            valid = (
                 item["overlap"] >= self.min_overlap_score
                 and item["coverage"] >= self.min_overlap_coverage
                 and item["anchor_error"] <= self.max_anchor_match
             )
+            if not valid:
+                return False
+            if item["mode"] == "global" and item["support"] < 0.20:
+                return (
+                    item["overlap"] >= self.global_min_overlap
+                    and item["coverage"] >= self.global_min_coverage
+                    and item["known"] >= self.global_min_known_cells
+                )
+            return True
 
         feature_items = []
-        for yaw, support in yaw_hypotheses:
-            transform, metrics = self.refine_anchor_constrained_candidate(
-                ref, mov, yaw, a_ref, a_mov, overlap_context
+        for feature_transform, support in yaw_hypotheses:
+            transform, metrics = self.refine_feature_candidate(
+                ref, mov, feature_transform, a_ref, a_mov, overlap_context
             )
             feature_items.append(
                 make_item(
@@ -671,6 +766,11 @@ class MergeMapUwb(Node):
                 f"overlap={best['overlap']:.3f}, coverage={best['coverage']:.3f}, "
                 f"known={best['known']}, feature_support={best['support']:.3f}, "
                 f"anchor_error={best['anchor_error']:.3f}m, "
+                f"features=({feature_stats['ref_keypoints']}/"
+                f"{feature_stats['mov_keypoints']} kp, "
+                f"{feature_stats['ratio_matches']} matches, "
+                f"{feature_stats['ransac_votes']} ransac, "
+                f"{feature_stats['yaw_hypotheses']} yaw), "
                 f"tx={best['transform'][0]:.3f}m, ty={best['transform'][1]:.3f}m, "
                 f"yaw={math.degrees(best['transform'][2]):.2f}deg"
             )
@@ -680,6 +780,11 @@ class MergeMapUwb(Node):
             f"overlap={best['overlap']:.3f}, coverage={best['coverage']:.3f}, "
             f"known={best['known']}, feature_support={best['support']:.3f}, "
             f"anchor_error={best['anchor_error']:.3f}m, "
+            f"features=({feature_stats['ref_keypoints']}/"
+            f"{feature_stats['mov_keypoints']} kp, "
+            f"{feature_stats['ratio_matches']} matches, "
+            f"{feature_stats['ransac_votes']} ransac, "
+            f"{feature_stats['yaw_hypotheses']} yaw), "
             f"tx={best['transform'][0]:.3f}m, ty={best['transform'][1]:.3f}m, "
             f"yaw={math.degrees(best['transform'][2]):.2f}deg"
         )
