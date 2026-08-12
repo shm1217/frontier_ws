@@ -25,10 +25,10 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument(
-            "robot_namespaces", default_value="['tb3_0','tb3_1']"),
+            "robot_namespaces", default_value="['tb3_0','tb3_1','tb3_2']"),
         # TODO: 시뮬레이션과 하드웨어 사용 구분
         DeclareLaunchArgument(
-            "use_mock_uwb", default_value="false",
+            "use_mock_uwb", default_value="true",
             description="하드웨어 UWB 사용 시 false, Gazebo에서는 true"),
         DeclareLaunchArgument(
             "tb3_0_front_serial_port", default_value="/dev/ttyUSB_tb3_0_front"),
@@ -46,11 +46,11 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "model_states_topic", default_value="/gazebo/model_states"),
         DeclareLaunchArgument(
-            "initial_world_x", default_value="[0.0,0.0]"), 
+            "initial_world_x", default_value="[0.0,0.0,0.0]"), 
         DeclareLaunchArgument(
-            "initial_world_y", default_value="[0.0,0.0]"),
+            "initial_world_y", default_value="[0.0,0.0,0.0]"),
         DeclareLaunchArgument(
-            "initial_world_yaw", default_value="[0.0,0.0]"),
+            "initial_world_yaw", default_value="[0.0,0.0,0.0]"),
 
 
         ## 시뮬레이션 사용 시 실행됨

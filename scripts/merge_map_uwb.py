@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Feature/UWB assisted multi-robot occupancy-grid registration and merging.
 
-The reference robot map becomes ``world``.  ORB map features produce SE(2)
-yaw candidates.  Front/back tags mounted at +/- ``tag_offset_from_base_m``
-observe one common anchor while the robot moves; both range histories jointly
-estimate that anchor in each local map.  Candidate selection combines feature
-support, occupancy agreement, and the two-tag anchor constraint.  A single
-anchor does not independently make absolute yaw observable, so UWB validates
-and stabilizes feature yaw rather than replacing it.
+All map pairs are evaluated and the strongest valid overlaps form a transform
+tree.  The tree is rooted at the reference robot, whose map becomes ``world``;
+the original grids are then merged once to avoid repeated resampling.  ORB map
+features produce SE(2) yaw candidates.  Front/back tags mounted at +/-
+``tag_offset_from_base_m`` observe one common anchor while the robot moves;
+both range histories jointly estimate that anchor in each local map.  Candidate
+selection combines feature support, occupancy agreement, and the two-tag
+anchor constraint.  A single anchor does not independently make absolute yaw
+observable, so UWB validates and stabilizes feature yaw rather than replacing
+it.
 """
 
 import math
@@ -109,7 +112,7 @@ class MergeMapUwb(Node):
             self.declare_parameter("min_overlap_score", 0.5).value
         )
         self.min_overlap_coverage = float(
-            self.declare_parameter("min_overlap_coverage", 0.2).value ## 0.1
+            self.declare_parameter("min_overlap_coverage", 0.1).value ## 0.1
         ) 
         self.wall_tolerance = float(
             self.declare_parameter("wall_tolerance_m", 0.10).value
@@ -146,6 +149,10 @@ class MergeMapUwb(Node):
         }
         self.anchors = {}
         self.transforms = {}
+        # Successful pair registrations survive later timer cycles.  This lets
+        # robots form the global map through overlaps observed at different
+        # times (for example, 0<->1 first and 1<->2 later).
+        self.edge_cache = {}
         self.locked = False
 
         self.tf_buffer = Buffer()
@@ -424,6 +431,31 @@ class MergeMapUwb(Node):
             [c * point[0] - s * point[1] + tx, s * point[0] + c * point[1] + ty]
         )
 
+    @staticmethod
+    def compose_transform(outer, inner):
+        """Compose SE(2) transforms: result(point) = outer(inner(point))."""
+        outer_tx, outer_ty, outer_yaw = outer
+        inner_tx, inner_ty, inner_yaw = inner
+        c, s = math.cos(outer_yaw), math.sin(outer_yaw)
+        tx = outer_tx + c * inner_tx - s * inner_ty
+        ty = outer_ty + s * inner_tx + c * inner_ty
+        yaw = math.atan2(
+            math.sin(outer_yaw + inner_yaw),
+            math.cos(outer_yaw + inner_yaw),
+        )
+        return float(tx), float(ty), float(yaw)
+
+    @staticmethod
+    def inverse_transform(transform):
+        """Invert an SE(2) transform."""
+        tx, ty, yaw = transform
+        c, s = math.cos(yaw), math.sin(yaw)
+        return (
+            float(-c * tx - s * ty),
+            float(s * tx - c * ty),
+            float(-yaw),
+        )
+
     def make_overlap_context(self, ref):
         ref_data = np.asarray(ref.data, dtype=np.int16).reshape(
             ref.info.height, ref.info.width
@@ -651,7 +683,132 @@ class MergeMapUwb(Node):
             f"tx={best['transform'][0]:.3f}m, ty={best['transform'][1]:.3f}m, "
             f"yaw={math.degrees(best['transform'][2]):.2f}deg"
         )
-        return best["transform"]
+        return best
+
+    def build_overlap_transform_graph(self):
+        """Register every map pair and keep the best connected edge set.
+
+        Each accepted edge stores a transform from ``mov`` into ``ref``.  A
+        maximum-spanning-tree selection prefers strongly overlapping pairs, so
+        a robot need not overlap the configured reference map directly.
+        """
+        for ref_index, ref_ns in enumerate(self.robots):
+            for mov_ns in self.robots[ref_index + 1 :]:
+                pair_key = (ref_ns, mov_ns)
+                self.get_logger().info(f"evaluating map pair: {mov_ns} -> {ref_ns}")
+                result = self.select_transform(ref_ns, mov_ns)
+                if result is None:
+                    if pair_key in self.edge_cache:
+                        cached = self.edge_cache[pair_key]
+                        self.get_logger().warn(
+                            f"current map pair unavailable: {mov_ns} <-> {ref_ns}; "
+                            f"retaining cached edge score={cached['score']:.3f}"
+                        )
+                    else:
+                        self.get_logger().warn(
+                            f"map pair unavailable and not cached: "
+                            f"{mov_ns} <-> {ref_ns}"
+                        )
+                    continue
+
+                edge = {
+                    "ref": ref_ns,
+                    "mov": mov_ns,
+                    "transform": result["transform"],
+                    "score": result["total"],
+                    "overlap": result["overlap"],
+                    "coverage": result["coverage"],
+                    "support": result["support"],
+                    "anchor_error": result["anchor_error"],
+                    "stamp_ns": self.get_clock().now().nanoseconds,
+                }
+                cached = self.edge_cache.get(pair_key)
+                if cached is None:
+                    self.edge_cache[pair_key] = edge
+                    self.get_logger().info(
+                        f"cached new map edge: {mov_ns} -> {ref_ns}, "
+                        f"score={edge['score']:.3f}"
+                    )
+                elif (edge["score"], edge["coverage"]) > (
+                    cached["score"],
+                    cached["coverage"],
+                ):
+                    self.edge_cache[pair_key] = edge
+                    self.get_logger().info(
+                        f"updated cached map edge: {mov_ns} -> {ref_ns}, "
+                        f"score={cached['score']:.3f}->{edge['score']:.3f}"
+                    )
+                else:
+                    self.get_logger().info(
+                        f"retaining better cached map edge: {mov_ns} -> {ref_ns}, "
+                        f"cached_score={cached['score']:.3f}, "
+                        f"current_score={edge['score']:.3f}"
+                    )
+
+        candidates = list(self.edge_cache.values())
+        self.get_logger().info(
+            f"building transform graph from {len(candidates)} cached map edges"
+        )
+
+        candidates.sort(key=lambda edge: edge["score"], reverse=True)
+
+        parent = {ns: ns for ns in self.robots}
+
+        def find(ns):
+            while parent[ns] != ns:
+                parent[ns] = parent[parent[ns]]
+                ns = parent[ns]
+            return ns
+
+        selected = []
+        for edge in candidates:
+            ref_root = find(edge["ref"])
+            mov_root = find(edge["mov"])
+            if ref_root == mov_root:
+                continue
+            parent[mov_root] = ref_root
+            selected.append(edge)
+            self.get_logger().info(
+                f"selected map edge: {edge['mov']} -> {edge['ref']}, "
+                f"score={edge['score']:.3f}, overlap={edge['overlap']:.3f}, "
+                f"coverage={edge['coverage']:.3f}"
+            )
+            if len(selected) == len(self.robots) - 1:
+                break
+
+        if len(selected) != len(self.robots) - 1:
+            connected = sorted(
+                ns for ns in self.robots if find(ns) == find(self.reference_robot)
+            )
+            self.get_logger().error(
+                "map registration graph is disconnected: "
+                f"connected_to_{self.reference_robot}={connected}"
+            )
+            return None
+
+        adjacency = defaultdict(list)
+        for edge in selected:
+            ref_ns = edge["ref"]
+            mov_ns = edge["mov"]
+            mov_to_ref = edge["transform"]
+            adjacency[ref_ns].append((mov_ns, mov_to_ref))
+            adjacency[mov_ns].append(
+                (ref_ns, self.inverse_transform(mov_to_ref))
+            )
+
+        transforms = {self.reference_robot: (0.0, 0.0, 0.0)}
+        queue = deque([self.reference_robot])
+        while queue:
+            current = queue.popleft()
+            for neighbor, neighbor_to_current in adjacency[current]:
+                if neighbor in transforms:
+                    continue
+                transforms[neighbor] = self.compose_transform(
+                    transforms[current], neighbor_to_current
+                )
+                queue.append(neighbor)
+
+        return transforms
 
     def broadcast_transforms(self):
         messages = []
@@ -816,34 +973,21 @@ class MergeMapUwb(Node):
             return
 
         self.get_logger().info(
-            f"starting map registration: " f"reference_robot={self.reference_robot}"
+            "starting pairwise map registration: "
+            f"world_reference={self.reference_robot}"
         )
 
-        self.transforms = {self.reference_robot: (0.0, 0.0, 0.0)}
+        transforms = self.build_overlap_transform_graph()
+        if transforms is None:
+            self.transforms = {}
+            self.publish_valid(False)
+            return
+        self.transforms = transforms
 
-        for ns in self.robots:
-            if ns == self.reference_robot:
-                continue
-
-            self.get_logger().info(f"registering {ns} -> {self.reference_robot}")
-            transform = self.select_transform(self.reference_robot, ns)
-
-            if transform is None:
-                self.get_logger().error(
-                    f"registration failed: " f"{ns} -> {self.reference_robot}"
-                )
-
-                self.transforms = {}
-                self.publish_valid(False)
-                return
-
-            self.transforms[ns] = transform
-
+        for ns, transform in self.transforms.items():
             self.get_logger().info(
-                f"registration transform LOCKED: "
-                f"{ns} -> {self.reference_robot}, "
-                f"tx={transform[0]:.3f}, "
-                f"ty={transform[1]:.3f}, "
+                f"registration transform LOCKED: {ns}/map -> world, "
+                f"tx={transform[0]:.3f}, ty={transform[1]:.3f}, "
                 f"yaw={math.degrees(transform[2]):.2f} deg"
             )
 
