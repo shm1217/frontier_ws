@@ -12,7 +12,7 @@ from nav2_common.launch import RewrittenYaml
 
 def launch_setup(context, *args, **kwargs):
     use_sim_time_str = LaunchConfiguration("use_sim_time").perform(context)
-    use_sim_time = use_sim_time_str.lower() in ("tsrue", "1", "yes")
+    use_sim_time = use_sim_time_str.lower() in ("true", "1", "yes")
     use_sim_time_str = "True" if use_sim_time else "False"
 
     pkg_dir = get_package_share_directory('frontier_ws')

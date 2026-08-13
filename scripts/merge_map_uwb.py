@@ -136,6 +136,12 @@ class MergeMapUwb(Node):
         self.global_min_overlap = float(
             self.declare_parameter("global_min_overlap", 0.60).value
         )
+        self.feature_min_known_cells = int(
+            self.declare_parameter("feature_min_known_cells", 150).value
+        )
+        self.feature_min_coverage = float(
+            self.declare_parameter("feature_min_coverage", 0.25).value
+        )
         self.feature_weight = float(self.declare_parameter("feature_weight", 1.0).value)
         self.overlap_weight = float(self.declare_parameter("overlap_weight", 1.0).value)
         self.coverage_weight = float(
@@ -153,6 +159,28 @@ class MergeMapUwb(Node):
             self.declare_parameter("output_resolution", 0.05).value
         )
         self.map_padding = float(self.declare_parameter("map_padding_m", 1.0).value)
+        self.edge_stable_confirmations = int(
+            self.declare_parameter("edge_stable_confirmations", 3).value
+        )
+        self.edge_stable_max_translation = float(
+            self.declare_parameter("edge_stable_max_translation_m", 0.15).value
+        )
+        self.edge_stable_max_yaw = math.radians(
+            float(self.declare_parameter("edge_stable_max_yaw_deg", 2.0).value)
+        )
+        self.global_edge_stable_confirmations = int(
+            self.declare_parameter("global_edge_stable_confirmations", 5).value
+        )
+        self.global_edge_stable_max_translation = float(
+            self.declare_parameter(
+                "global_edge_stable_max_translation_m", 0.08
+            ).value
+        )
+        self.global_edge_stable_max_yaw = math.radians(
+            float(
+                self.declare_parameter("global_edge_stable_max_yaw_deg", 0.5).value
+            )
+        )
 
         self.maps = {}
         self.samples = {ns: deque(maxlen=self.max_samples) for ns in self.robots}
@@ -165,6 +193,7 @@ class MergeMapUwb(Node):
         # robots form the global map through overlaps observed at different
         # times (for example, 0<->1 first and 1<->2 later).
         self.edge_cache = {}
+        self.edge_pending = {}
         self.locked = False
 
         self.tf_buffer = Buffer()
@@ -208,6 +237,69 @@ class MergeMapUwb(Node):
         self.valid_pub = self.create_publisher(Bool, "/merge_map_uwb_valid", qos)
         self.timer = self.create_timer(1.0, self.tick)
         self.publish_valid(False)
+
+    @staticmethod
+    def transform_distance(first, second):
+        translation = math.hypot(first[0] - second[0], first[1] - second[1])
+        yaw = abs(math.atan2(
+            math.sin(first[2] - second[2]), math.cos(first[2] - second[2])
+        ))
+        return translation, yaw
+
+    def confirm_edge(self, pair_key, edge):
+        weak_global = edge["mode"] == "global" and edge["support"] < 0.20
+        required = (
+            self.global_edge_stable_confirmations
+            if weak_global else self.edge_stable_confirmations
+        )
+        max_translation = (
+            self.global_edge_stable_max_translation
+            if weak_global else self.edge_stable_max_translation
+        )
+        max_yaw = (
+            self.global_edge_stable_max_yaw
+            if weak_global else self.edge_stable_max_yaw
+        )
+        history = self.edge_pending.setdefault(pair_key, [])
+        if history and history[-1]["mode"] != edge["mode"]:
+            history.clear()
+        if history:
+            translation, yaw = self.transform_distance(
+                history[-1]["transform"], edge["transform"]
+            )
+            if (
+                translation > max_translation
+                or yaw > max_yaw
+            ):
+                history.clear()
+                if pair_key in self.edge_cache:
+                    old = self.edge_cache.pop(pair_key)
+                    self.get_logger().warn(
+                        f"discarding stale map edge {old['mov']} -> {old['ref']}: "
+                        f"new estimate changed by {translation:.3f}m, "
+                        f"{math.degrees(yaw):.2f}deg"
+                    )
+        history.append(edge)
+        if len(history) > required:
+            del history[:-required]
+        self.get_logger().info(
+            f"map edge stability {edge['mov']} -> {edge['ref']}: "
+            f"{len(history)}/{required} (mode={edge['mode']})"
+        )
+        if len(history) < required:
+            return None
+
+        transforms = [item["transform"] for item in history]
+        averaged = dict(max(history, key=lambda item: item["score"]))
+        averaged["transform"] = (
+            float(np.mean([item[0] for item in transforms])),
+            float(np.mean([item[1] for item in transforms])),
+            math.atan2(
+                float(np.mean([math.sin(item[2]) for item in transforms])),
+                float(np.mean([math.cos(item[2]) for item in transforms])),
+            ),
+        )
+        return averaged
 
     def publish_valid(self, value):
         msg = Bool()
@@ -686,6 +778,11 @@ class MergeMapUwb(Node):
             )
             if not valid:
                 return False
+            if item["mode"] == "feature":
+                return (
+                    item["coverage"] >= self.feature_min_coverage
+                    and item["known"] >= self.feature_min_known_cells
+                )
             if item["mode"] == "global" and item["support"] < 0.20:
                 return (
                     item["overlap"] >= self.global_min_overlap
@@ -803,17 +900,17 @@ class MergeMapUwb(Node):
                 self.get_logger().info(f"evaluating map pair: {mov_ns} -> {ref_ns}")
                 result = self.select_transform(ref_ns, mov_ns)
                 if result is None:
+                    self.edge_pending.pop(pair_key, None)
                     if pair_key in self.edge_cache:
-                        cached = self.edge_cache[pair_key]
+                        old = self.edge_cache.pop(pair_key)
                         self.get_logger().warn(
-                            f"current map pair unavailable: {mov_ns} <-> {ref_ns}; "
-                            f"retaining cached edge score={cached['score']:.3f}"
+                            f"discarding map edge that no longer validates: "
+                            f"{old['mov']} -> {old['ref']}"
                         )
-                    else:
-                        self.get_logger().warn(
-                            f"map pair unavailable and not cached: "
-                            f"{mov_ns} <-> {ref_ns}"
-                        )
+                    self.get_logger().warn(
+                        f"map pair unavailable and not confirmed: "
+                        f"{mov_ns} <-> {ref_ns}"
+                    )
                     continue
 
                 edge = {
@@ -824,9 +921,13 @@ class MergeMapUwb(Node):
                     "overlap": result["overlap"],
                     "coverage": result["coverage"],
                     "support": result["support"],
+                    "mode": result["mode"],
                     "anchor_error": result["anchor_error"],
                     "stamp_ns": self.get_clock().now().nanoseconds,
                 }
+                edge = self.confirm_edge(pair_key, edge)
+                if edge is None:
+                    continue
                 cached = self.edge_cache.get(pair_key)
                 if cached is None:
                     self.edge_cache[pair_key] = edge

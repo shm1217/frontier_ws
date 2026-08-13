@@ -19,7 +19,7 @@ frontier_multi_uwb:
     # ---------------------------------------------------------
     obstacle_threshold: 60
     free_threshold: 50
-    inflation_radius_m: 0.20
+    inflation_radius_m: 0.4
     frontier_search_radius_m: 8.0
 
     # ---------------------------------------------------------
@@ -64,16 +64,19 @@ frontier_multi_uwb:
     info_gain_radius_m: 1.50 # 후보 지점 중 이 반경 내에서 가장 큰 정보 획득량을 가진 지점 선택
     alpha_info_gain: 10.0
     beta_path_len: 2.0
-    delta_reserve: 15.0
-    reserve_exclusion_radius_m: 2.0 # 다른 로봇의 예약지점과의 최소 거리 지정
-    reserve_ttl_s: 6.0
+    delta_reserve: 20.0
+    reserve_exclusion_radius_m: 2.5 # 3대 운용 시 인접 frontier 중복 선택 방지
+    reserve_ttl_s: 8.0
     reserve_refresh_period_s: 1.0
+    goal_lock_time_s: 5.0
+    reservation_switch_cooldown_s: 4.0
+    reservation_distance_margin_m: 0.5
     reserve_out_topic: "/global_goal_reservation"
     # 상대 로봇의 실제 위치를 전역 경로의 임시 장애물로 반영
     robot_position_topic: "/global_robot_positions"
     robot_position_period_s: 0.2
     robot_position_ttl_s: 1.0
-    other_robot_radius_m: 0.32
+    other_robot_radius_m: 0.55
 
     # ---------------------------------------------------------
     # 리플래닝 (Replan)

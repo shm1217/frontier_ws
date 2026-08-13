@@ -63,6 +63,11 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     reserve_exclusion_radius_m_ = this->declare_parameter<double>("reserve_exclusion_radius_m", 2.0);
     reserve_ttl_s_ = this->declare_parameter<double>("reserve_ttl_s", 6.0);
     reserve_refresh_period_s_ = this->declare_parameter<double>("reserve_refresh_period_s", 1.0);
+    goal_lock_time_s_ = this->declare_parameter<double>("goal_lock_time_s", 5.0);
+    reservation_switch_cooldown_s_ = this->declare_parameter<double>(
+        "reservation_switch_cooldown_s", 4.0);
+    reservation_distance_margin_m_ = this->declare_parameter<double>(
+        "reservation_distance_margin_m", 0.5);
     reserve_out_topic_ = this->declare_parameter<std::string>("reserve_out_topic", "/global_goal_reservation");
     robot_position_topic_ = this->declare_parameter<std::string>("robot_position_topic", "/global_robot_positions");
     robot_position_ttl_s_ = this->declare_parameter<double>("robot_position_ttl_s", 1.0);
@@ -351,11 +356,58 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
 
   bool FrontierExplorerMulti::isFrontierCell(int x, int y) const {
     if (!isTraversable(x,y)) return false;
+    bool touches_unknown = false;
     for (int k=0;k<8;k++){
       int nx=x+dx8[k], ny=y+dy8[k];
       if (!inBounds(nx,ny)) continue;
       int nv = map_.data[IDX(nx, ny, (int)map_.info.width)];
-      if (nv == UNKNOWN) return true;
+      if (nv == UNKNOWN) touches_unknown = true;
+    }
+    return touches_unknown && hasMeaningfulUnknownRegion(x, y);
+  }
+
+  bool FrontierExplorerMulti::hasMeaningfulUnknownRegion(int x, int y) const {
+    const int W = (int)map_.info.width;
+    const int H = (int)map_.info.height;
+    // 0.30 m 이내에 최소 12개의 서로 연결된 unknown 셀이 있어야 실제
+    // 미탐사 경계로 인정한다. Cartographer가 만든 단일 셀/격자형 구멍은 제외된다.
+    const int radius = std::max(2, (int)std::ceil(0.30 / map_.info.resolution));
+    constexpr int required_unknown_cells = 12;
+
+    std::queue<GridPose> q;
+    std::vector<uint8_t> visited((2 * radius + 1) * (2 * radius + 1), 0);
+    auto localIndex = [radius](int dx, int dy) {
+      return (dy + radius) * (2 * radius + 1) + (dx + radius);
+    };
+
+    for (int k = 0; k < 8; ++k) {
+      const int nx = x + dx8[k];
+      const int ny = y + dy8[k];
+      if (!inBounds(nx, ny) || map_.data[IDX(nx, ny, W)] != UNKNOWN) continue;
+      const int dx = nx - x;
+      const int dy = ny - y;
+      visited[localIndex(dx, dy)] = 1;
+      q.push({nx, ny});
+    }
+
+    int count = 0;
+    while (!q.empty()) {
+      const GridPose cur = q.front();
+      q.pop();
+      if (++count >= required_unknown_cells) return true;
+
+      for (int k = 0; k < 8; ++k) {
+        const int nx = cur.x + dx8[k];
+        const int ny = cur.y + dy8[k];
+        const int dx = nx - x;
+        const int dy = ny - y;
+        if (std::abs(dx) > radius || std::abs(dy) > radius) continue;
+        if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+        const int lid = localIndex(dx, dy);
+        if (visited[lid] || map_.data[IDX(nx, ny, W)] != UNKNOWN) continue;
+        visited[lid] = 1;
+        q.push({nx, ny});
+      }
     }
     return false;
   }
@@ -988,7 +1040,9 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     if (!toGlobal(wx, wy, xg, yg)) return;
 
     geometry_msgs::msg::PoseStamped ps;
-    ps.header.stamp = this->now();
+    // 갱신 메시지에도 최초 목적지 선택 시각을 유지해 선착순 비교가
+    // refresh 주기에 따라 뒤집히지 않도록 한다.
+    ps.header.stamp = goal_commit_start_;
     ps.header.frame_id = robot_id_;
     ps.pose.position.x = xg;
     ps.pose.position.y = yg;
@@ -1008,8 +1062,51 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     rg.x = msg.pose.position.x;
     rg.y = msg.pose.position.y;
     rg.stamp = this->now();
+    rg.reservation_start = rclcpp::Time(
+        msg.header.stamp, this->get_clock()->get_clock_type());
 
     reservations_[sender_id] = rg;
+
+    // 중앙 서버나 고정 robot_id 우선순위 없이 충돌을 해결한다. 목표 잠금
+    // 시간 이후 상대가 목적지에 확실히 더 가깝거나 먼저 예약했을 때만 양보한다.
+    const auto now = this->now();
+    if (!using_local_map_ && has_goal_ &&
+        (now - goal_commit_start_).seconds() >= goal_lock_time_s_ &&
+        (now - last_reservation_switch_).seconds() >= reservation_switch_cooldown_s_) {
+      auto [goal_x, goal_y] = gridToWorld(current_goal_.x, current_goal_.y);
+      double goal_global_x, goal_global_y;
+      if (toGlobal(goal_x, goal_y, goal_global_x, goal_global_y) &&
+          std::hypot(goal_global_x - rg.x, goal_global_y - rg.y) <
+              reserve_exclusion_radius_m_) {
+        double self_x, self_y;
+        const bool have_self = toGlobal(robot_.x, robot_.y, self_x, self_y);
+        const auto pos_it = other_robot_positions_.find(sender_id);
+        const bool have_sender = pos_it != other_robot_positions_.end() &&
+            (now - pos_it->second.stamp).seconds() <= robot_position_ttl_s_;
+        if (have_self && have_sender) {
+          const double self_distance = std::hypot(
+              goal_global_x - self_x, goal_global_y - self_y);
+          const double sender_distance = std::hypot(
+              rg.x - pos_it->second.x, rg.y - pos_it->second.y);
+          const bool sender_clearly_closer =
+              sender_distance + reservation_distance_margin_m_ < self_distance;
+          const bool distances_tied =
+              std::abs(sender_distance - self_distance) <= reservation_distance_margin_m_;
+          const bool sender_reserved_first =
+              rg.reservation_start.nanoseconds() > 0 &&
+              rg.reservation_start < goal_commit_start_;
+          if (sender_clearly_closer || (distances_tied && sender_reserved_first)) {
+            clearPathAndCancel();
+            last_reservation_switch_ = now;
+            last_plan_attempt_ = rclcpp::Time(0, 0, this->get_clock()->get_clock_type());
+            RCLCPP_INFO(
+                get_logger(),
+                "[%s] yielding reservation to %s (self=%.2fm, other=%.2fm)",
+                robot_id_.c_str(), sender_id.c_str(), self_distance, sender_distance);
+          }
+        }
+      }
+    }
 
   }
 
@@ -1077,9 +1174,6 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
 
     double max_penalty = 0.0;
     for (const auto& kv : reservations_) {
-        // 동시 선택 시 양쪽이 모두 양보하며 진동하지 않도록 이름이 작은
-        // 로봇의 예약만 우선권으로 인정한다 (tb3_0 > tb3_1).
-        if (kv.first > robot_id_) continue;
         double d = std::hypot(goal_x_g - kv.second.x, goal_y_g - kv.second.y);
         if (d >= reserve_exclusion_radius_m_) continue;
         // 예약 지점에 가까울수록 1.0에 가까운 페널티, 반경 경계에서 0.0
@@ -1188,8 +1282,9 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     cmd.linear.x = 0.0;
     cmd.angular.z = 0.0;
     cmd_pub_->publish(cmd);
-
-    (void)reason;
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 3000,
+        "[%s] exploration holding: %s", robot_id_.c_str(), reason);
   }
 
   int FrontierExplorerMulti::findNearestIndexOnPath(const std::vector<GridPose>& path, int start_idx, int window) {
@@ -1256,7 +1351,9 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
 
   void FrontierExplorerMulti::onDwbCmd(
       const geometry_msgs::msg::Twist::SharedPtr msg) {
-    last_dwb_cmd_ = *msg;
+    // DWB의 local costmap 판단과 별개로 실제 최신 LaserScan을 이용해
+    // 최종 속도 명령에 전방 긴급 정지/감속을 적용한다.
+    last_dwb_cmd_ = applyDynamicSafetyFilter(*msg);
     last_dwb_cmd_time_ = this->now();
   }
 
@@ -1414,16 +1511,6 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
 
     if ((now - last_replan_check_).seconds() < replan_check_period_s_) return false;
     last_replan_check_ = now;
-
-    // 예약 충돌은 commit time보다 먼저 해소한다. 동시 선택 시 우선순위가
-    // 낮은 로봇이 예약 메시지를 받는 즉시 다른 후보로 이동한다.
-    if (!has_gate_goal_ && !using_local_map_) {
-      auto [wx, wy] = gridToWorld(current_goal_.x, current_goal_.y);
-      double gx, gy;
-      if (toGlobal(wx, wy, gx, gy) && reservePenaltyGlobal(gx, gy) > 0.5) {
-        return true;
-      }
-    }
 
     int ig_radius = (int)std::ceil(info_gain_radius_m_ / map_.info.resolution);
     double ig = infoGainAround(current_goal_, ig_radius);
@@ -1898,20 +1985,34 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
                 frontiers,
                 labels);
 
+        // meaningful-unknown 필터를 통과한 실제 frontier가 있지만 점 밀도가
+        // DBSCAN min_pts에 못 미치는 경우 탐사를 멈추지 않는다. 서로 충분히
+        // 떨어진 소수 후보만 복구해 내부 격자 잡음이 다시 범람하지 않게 한다.
         if (reps.empty()) {
-            constexpr size_t max_fallback_candidates = 80;
-            const size_t count = std::min(frontiers.size(), max_fallback_candidates);
-            reps.reserve(count);
-            for (size_t i = 0; i < count; ++i) {
-                const size_t index = count == 1
-                    ? 0 : i * (frontiers.size() - 1) / (count - 1);
-                reps.push_back(frontiers[index]);
+            constexpr size_t max_sparse_candidates = 12;
+            const double spacing_m = std::max(0.75, dbscan_eps_m_ * 3.0);
+            for (const auto& frontier : frontiers) {
+                bool separated = true;
+                for (const auto& selected : reps) {
+                    if (distMeters(frontier, selected) < spacing_m) {
+                        separated = false;
+                        break;
+                    }
+                }
+                if (!separated) continue;
+                reps.push_back(frontier);
+                if (reps.size() >= max_sparse_candidates) break;
             }
         }
 
     } else {
 
         reps = frontiers;
+    }
+
+    if (reps.empty()) {
+        publishStop("no frontier clusters");
+        return;
     }
 
     if (enable_viz_) {

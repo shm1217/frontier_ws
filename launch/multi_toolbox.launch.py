@@ -44,7 +44,7 @@ def generate_launch_description():
         ))
 
     # =========================================================
-    # SLAM Toolbox 
+    # SLAM Toolbox
     # =========================================================
     for r in robots:
         ns = r["ns"]
@@ -109,35 +109,37 @@ def generate_launch_description():
     # frontier 노드
     # =========================================================
     def frontier_node(ns: str):
+        frontier_overrides = {
+            "use_sim_time": use_sim_time,
+            "robot_id": ns,
+            "map_topic": "/merge_map",
+            "map_frame": "world",
+            "base_frame": f"{ns}/base_footprint",
+            "global_frame": "world",
+            "merge_map_stale_s": 5.0,
+            "local_map_topic": "map",
+        }
         return Node(
             package="frontier_ws",
             executable="frontier_multi_uwb", 
             name="frontier_multi_uwb",
             namespace=ns,
             output="screen",
-            parameters=[param_file, {
-                "use_sim_time": use_sim_time,
-                "robot_id": ns,
-                "map_topic": "/merge_map",
-                "map_frame": "world",
-                "base_frame": f"{ns}/base_footprint",
-                "global_frame": "world",
-                "merge_map_stale_s": 5.0,   
-                "local_map_topic": "map",  
-            }],
+            parameters=[param_file, frontier_overrides],
         )
 
     def dwb_nodes(ns: str):
+        dwb_rewrites = {
+            'use_sim_time': use_sim_time_str,
+            'robot_base_frame': f'{ns}/base_footprint',
+            'global_frame': f'{ns}/odom',
+            'topic': f'/{ns}/scan',
+        }
         configured_params = ParameterFile(
             RewrittenYaml(
                 source_file=dwb_param_file,
                 root_key=ns,
-                param_rewrites={
-                    'use_sim_time': use_sim_time_str,
-                    'robot_base_frame': f'{ns}/base_footprint',
-                    'global_frame': f'{ns}/odom',
-                    'topic': f'/{ns}/scan',
-                },
+                param_rewrites=dwb_rewrites,
                 convert_types=True),
             allow_substs=True)
         return [

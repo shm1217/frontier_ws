@@ -83,6 +83,7 @@ private:
     // (3) frontier 탐색 및 셀 검사, 로봇 발 밑 열어두는 함수
     bool isTraversable(int x, int y) const;
     bool isFrontierCell(int x, int y) const;
+    bool hasMeaningfulUnknownRegion(int x, int y) const;
     std::vector<GridPose> detectFrontiers(const GridPose &robot_g) const;
     void applyKeepOpen(std::vector<uint8_t>& mask, const GridPose& robot_g) const;
     void applyGoalKeepOpen(std::vector<uint8_t>& mask, const GridPose& goal_g, const std::vector<uint8_t>& obsRaw) const;
@@ -257,7 +258,11 @@ private:
     double reserve_exclusion_radius_m_ = 1.5;
     double reserve_ttl_s_ = 5.0;
     double reserve_refresh_period_s_ = 1.0;
+    double goal_lock_time_s_ = 5.0;
+    double reservation_switch_cooldown_s_ = 4.0;
+    double reservation_distance_margin_m_ = 0.5;
     rclcpp::Time last_reservation_pub_{0, 0, RCL_ROS_TIME};
+    rclcpp::Time last_reservation_switch_{0, 0, RCL_ROS_TIME};
 
     std::string reserve_out_topic_;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr reserve_pub_;
@@ -270,6 +275,7 @@ private:
         std::string src; 
         double x{0}, y{0};
         rclcpp::Time stamp{0, 0, RCL_ROS_TIME};
+        rclcpp::Time reservation_start{0, 0, RCL_ROS_TIME};
     };
     
     std::unordered_map<std::string, ReservedGoal> reservations_;

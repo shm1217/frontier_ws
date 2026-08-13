@@ -1,6 +1,12 @@
 
 #### feature 매칭 + uwb 거리 기반 맵 머징 (앵커 한개, 태그 로봇별 2개)
 
++ ** 변경사항 **
+  + 특징점 기반 매칭 시 3번 이상 정합 성공해야 고정
+  + global 매칭 시 5번 이상 정합 성공해야 고정
+  + 탐사 로직, costmap이랑 inflation, 로봇 충돌 및 회피 반경 등 파라미터 수정
+  + 3대 탐사 시에 목적지 할당 관련 로직 수정
+
 + **시뮬레이션 사용 시**
 
 
@@ -30,6 +36,7 @@ ros2 launch frontier_ws merge_map_uwb.launch.py
 + **하드웨어 사용 시** 
     + ns_multi_toolbox.launch.py과 uwb_range_node.py(front, back 태그 각각 실행)는 각 로봇에서 실행
     + merge_map_uwb.launch.py는 PC에서 실행
+    + dwb_controller yaml 파일 use_sim_time 변경해야함
 
     + 로봇 0
       ```bash
