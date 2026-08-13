@@ -80,7 +80,7 @@ ros2 launch frontier_ws merge_map_uwb.launch.py
       ros2 launch turtlebot3_bringup robot.launch.py namespace:=tb3_1
       ```
       ```bash
-      ros2 launch frontier_ws multi_toolbox.launch.py robot_namespace:=tb3_1
+      ros2 launch frontier_ws ns_multi_toolbox.launch.py robot_namespace:=tb3_1
       ```
 
       + 로봇 2
@@ -106,7 +106,7 @@ ros2 launch frontier_ws merge_map_uwb.launch.py
       ros2 launch turtlebot3_bringup robot.launch.py namespace:=tb3_2
       ```
       ```bash
-      ros2 launch frontier_ws multi_toolbox.launch.py robot_namespace:=tb3_2
+      ros2 launch frontier_ws ns_multi_toolbox.launch.py robot_namespace:=tb3_2
       ```
 
     + PC
