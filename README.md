@@ -59,7 +59,7 @@ ros2 launch frontier_ws merge_map_uwb.launch.py
 
       + 로봇 1
       ```bash
-      python3 ~/ros2_ws/src/frontier_ws/scripts/uwb_range_node_uwb.py \
+      python3 ~/turtlebot3_ws/src/frontier_ws/scripts/uwb_range_node_uwb.py \
         --ros-args \
         -r __node:=uwb_range_tb3_1_front \
         -p serial_port:=/dev/ttyUSB_tb3_0_front \
@@ -68,7 +68,7 @@ ros2 launch frontier_ws merge_map_uwb.launch.py
         -r uwb/front/range:=/tb3_1/uwb/front/range
       ```
       ```bash
-      python3 ~/ros2_ws/src/frontier_ws/scripts/uwb_range_node_uwb.py \
+      python3 ~/turtlebot3_ws/src/frontier_ws/scripts/uwb_range_node_uwb.py \
         --ros-args \
         -r __node:=uwb_range_tb3_1_back \
         -p serial_port:=/dev/ttyUSB_tb3_0_back \
