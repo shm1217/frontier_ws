@@ -19,7 +19,7 @@ from collections import defaultdict, deque
 import cv2
 import numpy as np
 import rclpy
-from geometry_msgs.msg import TransformStamped
+from geometry_msgs.msg import PoseStamped, TransformStamped
 from nav_msgs.msg import OccupancyGrid
 from rclpy.duration import Duration
 from rclpy.node import Node
@@ -153,12 +153,26 @@ class MergeMapUwb(Node):
             self.declare_parameter("output_resolution", 0.05).value
         )
         self.map_padding = float(self.declare_parameter("map_padding_m", 1.0).value)
+        self.rendezvous_enabled = bool(
+            self.declare_parameter("rendezvous_enabled", True).value
+        )
+        self.rendezvous_trigger_timeout = float(
+            self.declare_parameter("rendezvous_trigger_timeout_s", 60.0).value
+        )
+        self.rendezvous_trigger_distance = float(
+            self.declare_parameter("rendezvous_trigger_distance_m", 6.0).value
+        )
+        self.rendezvous_arrival_radius = float(
+            self.declare_parameter("rendezvous_arrival_radius_m", 2.0).value
+        )
 
         self.maps = {}
         self.samples = {ns: deque(maxlen=self.max_samples) for ns in self.robots}
         self.last_sample_pose = {
             ns: {"front": None, "back": None} for ns in self.robots
         }
+        self.latest_base_pose = {ns: None for ns in self.robots}
+        self.rendezvous_active = {ns: False for ns in self.robots}
         self.anchors = {}
         self.transforms = {}
         # Successful pair registrations survive later timer cycles.  This lets
@@ -166,6 +180,7 @@ class MergeMapUwb(Node):
         # times (for example, 0<->1 first and 1<->2 later).
         self.edge_cache = {}
         self.locked = False
+        self.start_time = self.get_clock().now()
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -206,6 +221,12 @@ class MergeMapUwb(Node):
 
         self.map_pub = self.create_publisher(OccupancyGrid, "/merge_map", qos)
         self.valid_pub = self.create_publisher(Bool, "/merge_map_uwb_valid", qos)
+        self.rendezvous_pubs = {
+            ns: self.create_publisher(
+                PoseStamped, f"/{ns}/rendezvous_anchor", 10
+            )
+            for ns in self.robots
+        }
         self.timer = self.create_timer(1.0, self.tick)
         self.publish_valid(False)
 
@@ -237,6 +258,7 @@ class MergeMapUwb(Node):
         base_x = float(tf.transform.translation.x)
         base_y = float(tf.transform.translation.y)
         base_yaw = self.quaternion_yaw(tf.transform.rotation)
+        self.latest_base_pose[robot] = (base_x, base_y, base_yaw)
         signed_offset = self.tag_offset if tag == "front" else -self.tag_offset
         tag_x = base_x + signed_offset * math.cos(base_yaw)
         tag_y = base_y + signed_offset * math.sin(base_yaw)
@@ -251,6 +273,43 @@ class MergeMapUwb(Node):
             return
         q.append(sample)
         self.last_sample_pose[robot][tag] = sample
+
+    def publish_rendezvous_commands(self):
+        if not self.rendezvous_enabled or self.locked:
+            return
+        elapsed = (self.get_clock().now() - self.start_time).nanoseconds * 1e-9
+        timed_out = elapsed >= self.rendezvous_trigger_timeout
+        for ns in self.robots:
+            estimate = self.anchors.get(ns)
+            pose = self.latest_base_pose.get(ns)
+            if estimate is None or pose is None:
+                self.rendezvous_active[ns] = False
+                continue
+            anchor, rmse = estimate
+            if rmse > self.max_anchor_rmse:
+                self.rendezvous_active[ns] = False
+                continue
+            distance = math.hypot(anchor[0] - pose[0], anchor[1] - pose[1])
+            if distance <= self.rendezvous_arrival_radius:
+                self.rendezvous_active[ns] = False
+                continue
+            if not timed_out and distance <= self.rendezvous_trigger_distance:
+                self.rendezvous_active[ns] = False
+                continue
+
+            msg = PoseStamped()
+            msg.header.stamp = self.get_clock().now().to_msg()
+            msg.header.frame_id = f"{ns}/map"
+            msg.pose.position.x = float(anchor[0])
+            msg.pose.position.y = float(anchor[1])
+            msg.pose.orientation.w = 1.0
+            self.rendezvous_pubs[ns].publish(msg)
+            if not self.rendezvous_active[ns]:
+                self.get_logger().info(
+                    f"[{ns}] rendezvous active: anchor_distance={distance:.2f}m, "
+                    f"elapsed={elapsed:.1f}s"
+                )
+            self.rendezvous_active[ns] = True
 
     @staticmethod
     def estimate_anchor(samples):
@@ -995,12 +1054,11 @@ class MergeMapUwb(Node):
 
     def tick(self):
 
-        if any(ns not in self.maps for ns in self.robots):
-            self.get_logger().warn(f"waiting maps: have={list(self.maps.keys())}")
-            return
-
         # 이미 한 번 registration 성공했으면 기존 transform을 계속 사용해서 map만 갱신
         if self.locked:
+            if any(ns not in self.maps for ns in self.robots):
+                self.get_logger().warn(f"waiting maps: have={list(self.maps.keys())}")
+                return
             self.get_logger().info(
                 "registration already locked -> using existing transforms"
             )
@@ -1053,6 +1111,14 @@ class MergeMapUwb(Node):
                 and back_count >= min_per_tag
             ):
                 self.anchors[ns] = estimate
+
+        # 병합 로직과 독립적으로, 준비된 로봇부터 자기 local-map의 앵커
+        # 방향으로 유도한다. 숫자 좌표는 달라도 동일한 물리 앵커를 뜻한다.
+        self.publish_rendezvous_commands()
+
+        if any(ns not in self.maps for ns in self.robots):
+            self.get_logger().warn(f"waiting maps: have={list(self.maps.keys())}")
+            return
 
         anchor_not_ready = False
 

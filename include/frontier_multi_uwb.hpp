@@ -160,6 +160,7 @@ private:
 
     void onMap(const nav_msgs::msg::OccupancyGrid::SharedPtr msg);
     void onScan(const sensor_msgs::msg::LaserScan::SharedPtr msg);
+    void onRendezvousAnchor(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
     void onTimer();
 
     void addToBlacklist(const GridPose& g);
@@ -170,6 +171,7 @@ private:
     // ---------------------------------------------------------
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
+    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr rendezvous_anchor_sub_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_pub_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr dwb_cmd_sub_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr dynamic_cmd_pub_;
@@ -261,6 +263,13 @@ private:
 
     double info_gain_radius_m_ = 1.5;
     double alpha_ = 1.0, beta_ = 1.0, delta_ = 1.0;
+    std::string rendezvous_anchor_topic_ = "rendezvous_anchor";
+    double rendezvous_command_ttl_s_ = 3.0;
+    double rendezvous_utility_weight_ = 4.0;
+    geometry_msgs::msg::PoseStamped rendezvous_anchor_;
+    rclcpp::Time last_rendezvous_anchor_time_{0, 0, RCL_ROS_TIME};
+    bool has_rendezvous_anchor_ = false;
+    bool rendezvous_replan_requested_ = false;
 
     double reserve_exclusion_radius_m_ = 1.5;
     double reserve_ttl_s_ = 5.0;

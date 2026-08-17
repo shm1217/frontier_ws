@@ -65,6 +65,12 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     enable_viz_ = this->declare_parameter<bool>("enable_viz", true);
 
     info_gain_radius_m_ = this->declare_parameter<double>("info_gain_radius_m", 1.50);
+    rendezvous_anchor_topic_ = this->declare_parameter<std::string>(
+        "rendezvous_anchor_topic", "rendezvous_anchor");
+    rendezvous_command_ttl_s_ = this->declare_parameter<double>(
+        "rendezvous_command_ttl_s", 3.0);
+    rendezvous_utility_weight_ = this->declare_parameter<double>(
+        "rendezvous_utility_weight", 4.0);
 
     alpha_ = this->declare_parameter<double>("alpha_info_gain", 10);
     beta_  = this->declare_parameter<double>("beta_path_len", 2.0);
@@ -117,6 +123,10 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
 
     scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
       scan_topic_, scan_qos, std::bind(&FrontierExplorerMulti::onScan, this, std::placeholders::_1));
+    rendezvous_anchor_sub_ =
+      this->create_subscription<geometry_msgs::msg::PoseStamped>(
+        rendezvous_anchor_topic_, 10,
+        std::bind(&FrontierExplorerMulti::onRendezvousAnchor, this, std::placeholders::_1));
 
     map_delta_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>(
         map_delta_topic_, rclcpp::QoS(1).reliable().durability_volatile());
@@ -1160,6 +1170,15 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     int rejected_tf = 0;
     int rejected_reservation = 0;
     int rejected_astar = 0;
+    const bool rendezvous_active = using_local_map_ && has_rendezvous_anchor_ &&
+        (this->now() - last_rendezvous_anchor_time_).seconds() <=
+            rendezvous_command_ttl_s_ &&
+        (rendezvous_anchor_.header.frame_id.empty() ||
+            rendezvous_anchor_.header.frame_id == map_frame_);
+    const double robot_anchor_distance = rendezvous_active
+        ? std::hypot(robot_.x - rendezvous_anchor_.pose.position.x,
+                     robot_.y - rendezvous_anchor_.pose.position.y)
+        : 0.0;
 
     for (const auto& rep : reps) {
       const auto& g = rep;
@@ -1207,7 +1226,17 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     }
     double ig = infoGainAround(g, ig_cells);
 
-    double score = alpha_ * ig - beta_ * path_len - delta_ * rp; 
+    double score = alpha_ * ig - beta_ * path_len - delta_ * rp;
+    if (rendezvous_active) {
+      const auto [goal_x, goal_y] = gridToWorld(g.x, g.y);
+      const double goal_anchor_distance = std::hypot(
+          goal_x - rendezvous_anchor_.pose.position.x,
+          goal_y - rendezvous_anchor_.pose.position.y);
+      // 앵커에 가까워지는 진행량에 보상을 준다. 기존 정보이득/경로길이
+      // 점수는 유지하므로 장애물을 뚫고 앵커 좌표로 직행하지 않는다.
+      score += rendezvous_utility_weight_ *
+          (robot_anchor_distance - goal_anchor_distance);
+    }
 
     if (score > bestScore) {
       bestScore = score;
@@ -1682,6 +1711,28 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     last_local_map_time_ = this->now();
   }
 
+  void FrontierExplorerMulti::onRendezvousAnchor(
+      const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
+    const auto now = this->now();
+    const bool was_stale = !has_rendezvous_anchor_ ||
+        (now - last_rendezvous_anchor_time_).seconds() > rendezvous_command_ttl_s_;
+    const double moved = has_rendezvous_anchor_
+        ? std::hypot(
+            msg->pose.position.x - rendezvous_anchor_.pose.position.x,
+            msg->pose.position.y - rendezvous_anchor_.pose.position.y)
+        : std::numeric_limits<double>::infinity();
+    rendezvous_anchor_ = *msg;
+    last_rendezvous_anchor_time_ = now;
+    has_rendezvous_anchor_ = true;
+    if (was_stale || moved > 0.5) {
+      rendezvous_replan_requested_ = true;
+      RCLCPP_INFO(
+          get_logger(), "[%s] rendezvous anchor active in %s: (%.2f, %.2f)",
+          robot_id_.c_str(), msg->header.frame_id.c_str(),
+          msg->pose.position.x, msg->pose.position.y);
+    }
+  }
+
   void FrontierExplorerMulti::selectActiveMap() {
     auto now = this->now();
     bool merge_fresh = has_merge_map_ &&
@@ -1784,7 +1835,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
         else {
             const bool path_blocked = isCurrentPathBlocked(obsInfl);
             const bool stuck = isRobotStuck();
-            bool need_replan = path_blocked || shouldReplanByIG() ||
+            bool need_replan = rendezvous_replan_requested_ || path_blocked || shouldReplanByIG() ||
                 hasOtherRobotOnCurrentPath() || stuck;
 
             if (need_replan) {
@@ -1796,6 +1847,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
                         robot_id_.c_str());
                 }
                 clearPathAndCancel();
+                rendezvous_replan_requested_ = false;
 
                 if (has_gate_goal_) {
                     // IG가 다 빠진 gate goal은 버리고 로컬 fallback으로 전환
@@ -1823,6 +1875,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
 
     if ((this->now() - last_plan_attempt_).seconds() < plan_retry_period_s_) return;
     last_plan_attempt_ = this->now();
+    rendezvous_replan_requested_ = false;
 
         bool gate_goal_valid = false;
 

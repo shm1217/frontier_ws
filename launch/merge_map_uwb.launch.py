@@ -28,7 +28,7 @@ def generate_launch_description():
             "robot_namespaces", default_value="['tb3_0','tb3_1','tb3_2']"),
         # TODO: 시뮬레이션과 하드웨어 사용 구분
         DeclareLaunchArgument(
-            "use_mock_uwb", default_value="true",
+            "use_mock_uwb", default_value="false",
             description="하드웨어 UWB 사용 시 false, Gazebo에서는 true"),
         DeclareLaunchArgument(
             "tb3_0_front_serial_port", default_value="/dev/ttyUSB_tb3_0_front"),
@@ -39,6 +39,10 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "tb3_1_back_serial_port", default_value="/dev/ttyUSB_tb3_1_back"),
         DeclareLaunchArgument("tag_offset_from_base_m", default_value="0.15"),
+        DeclareLaunchArgument("rendezvous_enabled", default_value="true"),
+        DeclareLaunchArgument("rendezvous_trigger_timeout_s", default_value="60.0"),
+        DeclareLaunchArgument("rendezvous_trigger_distance_m", default_value="6.0"),
+        DeclareLaunchArgument("rendezvous_arrival_radius_m", default_value="2.0"),
         DeclareLaunchArgument("anchor_x", default_value="-6.0"),
         DeclareLaunchArgument("anchor_y", default_value="0.0"),
         DeclareLaunchArgument("publish_rate_hz", default_value="10.0"),
@@ -80,6 +84,10 @@ def generate_launch_description():
                 "python3", merger, "--ros-args",
                 "-p", ["robot_namespaces:=", robots],
                 "-p", ["tag_offset_from_base_m:=", LaunchConfiguration("tag_offset_from_base_m")],
+                "-p", ["rendezvous_enabled:=", LaunchConfiguration("rendezvous_enabled")],
+                "-p", ["rendezvous_trigger_timeout_s:=", LaunchConfiguration("rendezvous_trigger_timeout_s")],
+                "-p", ["rendezvous_trigger_distance_m:=", LaunchConfiguration("rendezvous_trigger_distance_m")],
+                "-p", ["rendezvous_arrival_radius_m:=", LaunchConfiguration("rendezvous_arrival_radius_m")],
             ],
             output="screen",
         ),
