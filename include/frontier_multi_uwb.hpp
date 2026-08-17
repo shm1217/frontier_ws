@@ -83,9 +83,9 @@ private:
     // (3) frontier 탐색 및 셀 검사, 로봇 발 밑 열어두는 함수
     bool isTraversable(int x, int y) const;
     bool isFrontierCell(int x, int y) const;
-    std::vector<GridPose> detectFrontiers(const GridPose &robot_g) const;
+    std::vector<GridPose> detectFrontiers(
+        const GridPose &robot_g, double search_radius_m) const;
     void applyKeepOpen(std::vector<uint8_t>& mask, const GridPose& robot_g) const;
-    void applyGoalKeepOpen(std::vector<uint8_t>& mask, const GridPose& goal_g, const std::vector<uint8_t>& obsRaw) const;
     bool isFrontierTooCloseToObstacle(const GridPose& f,
                                     const std::vector<uint8_t>& obsRaw,
                                     int radius_cells) const;
@@ -97,9 +97,12 @@ private:
     // (4) 장애물 마스크
     std::vector<uint8_t> buildObstacleInflatedMask(bool include_laser = true) const;
     std::vector<uint8_t> buildObstacleRawMask() const;
+    std::vector<int> buildClearanceCostMap(
+        const std::vector<uint8_t>& obsRaw) const;
     std::vector<uint8_t> buildBlockedMask() const;
     void applyOtherRobotFootprints(std::vector<uint8_t>& mask);
     bool hasOtherRobotOnCurrentPath();
+    bool isCurrentPathBlocked(const std::vector<uint8_t>& obstacle_mask);
 
     // (5) 경로 계획 및 dbscan clustering 
     std::vector<GridPose> astar(const GridPose &start, const GridPose &goal,
@@ -122,9 +125,7 @@ private:
     bool pickBestFrontierByUtility(
     const GridPose &robot_g,
     const std::vector<GridPose> &reps,
-    const std::vector<uint8_t> &blockedMask,
     const std::vector<uint8_t> &obsInfl,
-    const std::vector<uint8_t> &obsRaw,
     GridPose &out_goal,
     std::vector<GridPose> &out_path
     );
@@ -206,11 +207,15 @@ private:
     int free_threshold_ = 50;
     double inflation_radius_m_ = 0.2;
     double frontier_search_radius_m_ = 8.0;
+    double frontier_extended_search_radius_m_ = 12.0;
+    bool frontier_full_map_fallback_ = true;
 
     double avoid_enter_dist_ = 0.3;
 
     double frontier_clearance_m_ = 0.15;
     double path_clearance_m_ = 0.1;
+    int path_clearance_cost_weight_ = 30;
+    std::vector<int> clearance_cost_map_;
 
     int keep_open_cells_ = 2;
 
@@ -237,6 +242,9 @@ private:
 
     double stuck_timeout_s_{5.0};
     double stuck_min_move_m_{0.02};
+    double path_blocked_lookahead_m_ = 1.5;
+    double path_blocked_confirm_s_ = 0.3;
+    rclcpp::Time path_blocked_since_{0, 0, RCL_ROS_TIME};
     rclcpp::Time last_progress_time_{0, 0, RCL_ROS_TIME};
     double last_progress_x_ = 0.0;    
     double last_progress_y_ = 0.0;    
