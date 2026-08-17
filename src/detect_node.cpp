@@ -435,7 +435,7 @@ void DetectNode::pub_bbox_img(int frame_id, std::unordered_map<int, yolo_track> 
 
     if (boximg.det_ids.empty() && boximg.track_ids.empty())
     {
-        RCLCPP_WARN(this->get_logger(), "No valid det/track crops to publish");
+        // RCLCPP_WARN(this->get_logger(), "No valid det/track crops to publish");
         return;
     }
 
