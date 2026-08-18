@@ -138,3 +138,50 @@ ros2 launch frontier_ws merge_map_uwb.launch.py
   <파일 이름>.yaml \
   <파일 이름>.yaml
   ```
+
+### 맵 저장하기
+ + 누크에 맵 서버 깔려있는지
+```bash
+source /opt/ros/humble/setup.bash
+ros2 pkg executables nav2_map_server
+
+sudo apt update
+sudo apt install ros-humble-nav2-map-server
+```
+ + 로봇 개별 맵
+```bash
+mkdir -p ~/maps
+
+ros2 run nav2_map_server map_saver_cli \
+  -t /tb3_0/map \
+  -f ~/maps/tb3_0_map
+
+ros2 run nav2_map_server map_saver_cli \
+  -t /tb3_1/map \
+  -f ~/maps/tb3_1_map
+
+ros2 run nav2_map_server map_saver_cli \
+  -t /tb3_2/map \
+  -f ~/maps/tb3_2_map
+```
+
++ 머지 맵
+```bash
+mkdir -p ~/maps
+
+ros2 run nav2_map_server map_saver_cli \
+  -t /merge_map \
+  -f ~/maps/merged_map
+```
+
++ pc로 파일 가져오기
+```bash
+scp ubuntu@tb0:~/maps/tb3_0_map.yaml ~/maps/
+scp ubuntu@tb0:~/maps/tb3_0_map.pgm ~/maps/
+
+scp ubuntu@tb1:~/maps/tb3_1_map.yaml ~/maps/
+scp ubuntu@tb1:~/maps/tb3_1_map.pgm ~/maps/
+
+scp ubuntu@tb2:~/maps/tb3_2_map.yaml ~/maps/
+scp ubuntu@tb2:~/maps/tb3_2_map.pgm ~/maps/
+```
