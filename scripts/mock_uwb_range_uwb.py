@@ -25,7 +25,9 @@ class MockUwbRangeNode(Node):
         super().__init__("mock_uwb_range_uwb")
 
         self.robots = list(
-            self.declare_parameter("robot_namespaces", ["tb3_0", "tb3_2"]).value
+            self.declare_parameter(
+                "robot_namespaces", ["tb3_0", "tb3_1", "tb3_2"]
+            ).value
         )
         self.anchor_x = float(self.declare_parameter("anchor_x", -3.0).value)
         self.anchor_y = float(self.declare_parameter("anchor_y", 5.0).value)
@@ -33,11 +35,13 @@ class MockUwbRangeNode(Node):
             self.declare_parameter("model_states_topic", "/gazebo/model_states").value
         )
         initial_x = list(
-            self.declare_parameter("initial_world_x", [-0.978, 0.978]).value
+            self.declare_parameter("initial_world_x", [-0.978, 0.0, 0.978]).value
         )
-        initial_y = list(self.declare_parameter("initial_world_y", [1.92, 1.92]).value)
+        initial_y = list(
+            self.declare_parameter("initial_world_y", [1.92, 1.92, 1.92]).value
+        )
         initial_yaw = list(
-            self.declare_parameter("initial_world_yaw", [0.0, 0.0]).value
+            self.declare_parameter("initial_world_yaw", [0.0, 0.0, 0.0]).value
         )
         self.tag_offset = float(
             self.declare_parameter("tag_offset_from_base_m", 0.15).value
