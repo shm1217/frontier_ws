@@ -191,8 +191,14 @@ class MergeMapUwb(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.tf_static = StaticTransformBroadcaster(self)
-        qos = QoSProfile(
+        output_qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+        )
+        map_input_qos = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
             depth=1,
@@ -205,7 +211,7 @@ class MergeMapUwb(Node):
                     OccupancyGrid,
                     f"/{ns}/map",
                     lambda msg, robot=ns: self.on_map(msg, robot),
-                    qos,
+                    map_input_qos,
                 )
             )
             self.range_subs.append(
@@ -225,8 +231,12 @@ class MergeMapUwb(Node):
                 )
             )
 
-        self.map_pub = self.create_publisher(OccupancyGrid, "/merge_map", qos)
-        self.valid_pub = self.create_publisher(Bool, "/merge_map_uwb_valid", qos)
+        self.map_pub = self.create_publisher(
+            OccupancyGrid, "/merge_map", output_qos
+        )
+        self.valid_pub = self.create_publisher(
+            Bool, "/merge_map_uwb_valid", output_qos
+        )
         self.rendezvous_pubs = {
             ns: self.create_publisher(
                 PoseStamped, f"/{ns}/rendezvous_anchor", 10
