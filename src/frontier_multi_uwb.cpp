@@ -1170,7 +1170,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     int rejected_tf = 0;
     int rejected_reservation = 0;
     int rejected_astar = 0;
-    const bool rendezvous_active = using_local_map_ && has_rendezvous_anchor_ &&
+    const bool rendezvous_active = has_rendezvous_anchor_ &&
         (this->now() - last_rendezvous_anchor_time_).seconds() <=
             rendezvous_command_ttl_s_ &&
         (rendezvous_anchor_.header.frame_id.empty() ||
@@ -1821,7 +1821,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     auto obsRaw     = buildObstacleRawMask();
     applyOtherRobotFootprints(obsInfl);
     clearance_cost_map_ = buildClearanceCostMap(obsRaw);
-    const bool rendezvous_active = using_local_map_ && has_rendezvous_anchor_ &&
+    const bool rendezvous_active = has_rendezvous_anchor_ &&
         (this->now() - last_rendezvous_anchor_time_).seconds() <=
             rendezvous_command_ttl_s_ &&
         (rendezvous_anchor_.header.frame_id.empty() ||

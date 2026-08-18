@@ -251,12 +251,6 @@ class MergeMapUwb(Node):
 
     def on_manual_rendezvous(self, msg):
         now = self.get_clock().now()
-        if msg.data and self.locked:
-            self.get_logger().info(
-                "manual rendezvous ignored: map registration is already locked"
-            )
-            return
-
         for ns in self.robots:
             self.rendezvous_forced[ns] = bool(msg.data)
             if not msg.data:
@@ -312,13 +306,15 @@ class MergeMapUwb(Node):
         self.last_sample_pose[robot][tag] = sample
 
     def publish_rendezvous_commands(self):
-        if not self.rendezvous_enabled or self.locked:
+        if not self.rendezvous_enabled:
             return
         now = self.get_clock().now()
         for ns in self.robots:
             elapsed = (now - self.rendezvous_cycle_start[ns]).nanoseconds * 1e-9
             timed_out = elapsed >= self.rendezvous_trigger_timeout
-            should_rendezvous = self.rendezvous_forced[ns] or timed_out
+            should_rendezvous = self.rendezvous_forced[ns] or (
+                not self.locked and timed_out
+            )
             estimate = self.anchors.get(ns)
             pose = self.latest_base_pose.get(ns)
             if estimate is None or pose is None:
@@ -345,9 +341,16 @@ class MergeMapUwb(Node):
 
             msg = PoseStamped()
             msg.header.stamp = self.get_clock().now().to_msg()
-            msg.header.frame_id = f"{ns}/map"
-            msg.pose.position.x = float(anchor[0])
-            msg.pose.position.y = float(anchor[1])
+            if self.locked:
+                tx, ty, yaw = self.transforms[ns]
+                c, s = math.cos(yaw), math.sin(yaw)
+                msg.header.frame_id = self.global_frame
+                msg.pose.position.x = float(c * anchor[0] - s * anchor[1] + tx)
+                msg.pose.position.y = float(s * anchor[0] + c * anchor[1] + ty)
+            else:
+                msg.header.frame_id = f"{ns}/map"
+                msg.pose.position.x = float(anchor[0])
+                msg.pose.position.y = float(anchor[1])
             msg.pose.orientation.w = 1.0
             self.rendezvous_pubs[ns].publish(msg)
             if not self.rendezvous_active[ns]:
@@ -1102,6 +1105,7 @@ class MergeMapUwb(Node):
 
         # 이미 한 번 registration 성공했으면 기존 transform을 계속 사용해서 map만 갱신
         if self.locked:
+            self.publish_rendezvous_commands()
             if any(ns not in self.maps for ns in self.robots):
                 self.get_logger().warn(f"waiting maps: have={list(self.maps.keys())}")
                 return
