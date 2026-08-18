@@ -173,6 +173,9 @@ class MergeMapUwb(Node):
         }
         self.latest_base_pose = {ns: None for ns in self.robots}
         self.rendezvous_active = {ns: False for ns in self.robots}
+        self.rendezvous_cycle_start = {
+            ns: self.get_clock().now() for ns in self.robots
+        }
         self.anchors = {}
         self.transforms = {}
         # Successful pair registrations survive later timer cycles.  This lets
@@ -180,7 +183,6 @@ class MergeMapUwb(Node):
         # times (for example, 0<->1 first and 1<->2 later).
         self.edge_cache = {}
         self.locked = False
-        self.start_time = self.get_clock().now()
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -277,9 +279,10 @@ class MergeMapUwb(Node):
     def publish_rendezvous_commands(self):
         if not self.rendezvous_enabled or self.locked:
             return
-        elapsed = (self.get_clock().now() - self.start_time).nanoseconds * 1e-9
-        timed_out = elapsed >= self.rendezvous_trigger_timeout
+        now = self.get_clock().now()
         for ns in self.robots:
+            elapsed = (now - self.rendezvous_cycle_start[ns]).nanoseconds * 1e-9
+            timed_out = elapsed >= self.rendezvous_trigger_timeout
             estimate = self.anchors.get(ns)
             pose = self.latest_base_pose.get(ns)
             if estimate is None or pose is None:
@@ -291,9 +294,15 @@ class MergeMapUwb(Node):
                 continue
             distance = math.hypot(anchor[0] - pose[0], anchor[1] - pose[1])
             if distance <= self.rendezvous_arrival_radius:
+                if self.rendezvous_active[ns]:
+                    self.rendezvous_cycle_start[ns] = now
+                    self.get_logger().info(
+                        f"[{ns}] rendezvous arrived; restarting "
+                        f"{self.rendezvous_trigger_timeout:.1f}s exploration window"
+                    )
                 self.rendezvous_active[ns] = False
                 continue
-            if not timed_out and distance <= self.rendezvous_trigger_distance:
+            if not timed_out:
                 self.rendezvous_active[ns] = False
                 continue
 
