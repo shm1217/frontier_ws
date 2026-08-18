@@ -1821,6 +1821,11 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     auto obsRaw     = buildObstacleRawMask();
     applyOtherRobotFootprints(obsInfl);
     clearance_cost_map_ = buildClearanceCostMap(obsRaw);
+    const bool rendezvous_active = using_local_map_ && has_rendezvous_anchor_ &&
+        (this->now() - last_rendezvous_anchor_time_).seconds() <=
+            rendezvous_command_ttl_s_ &&
+        (rendezvous_anchor_.header.frame_id.empty() ||
+            rendezvous_anchor_.header.frame_id == map_frame_);
 
     if (!path_.empty()) {
         // Gate 없는 분산 탐사에서는 현재 목표 예약을 TTL보다 빠르게 갱신한다.
@@ -1835,7 +1840,8 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
         else {
             const bool path_blocked = isCurrentPathBlocked(obsInfl);
             const bool stuck = isRobotStuck();
-            bool need_replan = rendezvous_replan_requested_ || path_blocked || shouldReplanByIG() ||
+            bool need_replan = rendezvous_replan_requested_ || path_blocked ||
+                (!rendezvous_active && shouldReplanByIG()) ||
                 hasOtherRobotOnCurrentPath() || stuck;
 
             if (need_replan) {
@@ -1954,6 +1960,64 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     auto reachMask = obsInfl;
     applyKeepOpen(reachMask, robot_g);
     const auto reachable = buildReachableMaskFromStart(robot_g, reachMask);
+
+    if (rendezvous_active) {
+        const GridPose anchor_g = worldToGrid(
+            rendezvous_anchor_.pose.position.x,
+            rendezvous_anchor_.pose.position.y);
+        GridPose rendezvous_goal = robot_g;
+        double best_distance_squared = std::numeric_limits<double>::infinity();
+        const int width = static_cast<int>(map_.info.width);
+        const int height = static_cast<int>(map_.info.height);
+
+        // The physical anchor may be in an unknown or occupied cell. Target the
+        // closest known-free cell that is reachable from the robot instead.
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                if (!reachable[IDX(x, y, width)] || !isTraversable(x, y) ||
+                    obsInfl[IDX(x, y, width)]) {
+                    continue;
+                }
+                const double dx = static_cast<double>(x - anchor_g.x);
+                const double dy = static_cast<double>(y - anchor_g.y);
+                const double distance_squared = dx * dx + dy * dy;
+                if (distance_squared < best_distance_squared) {
+                    best_distance_squared = distance_squared;
+                    rendezvous_goal = {x, y};
+                }
+            }
+        }
+
+        auto rendezvous_path = astar(robot_g, rendezvous_goal, reachMask);
+        if (!rendezvous_path.empty() &&
+            (rendezvous_goal.x != robot_g.x || rendezvous_goal.y != robot_g.y)) {
+            path_ = std::move(rendezvous_path);
+            wp_idx_ = 0;
+            progress_inited_ = false;
+            current_goal_ = rendezvous_goal;
+            has_goal_ = true;
+            goal_commit_start_ = this->now();
+            goal_initial_ig_ = infoGainAround(
+                current_goal_,
+                static_cast<int>(std::ceil(info_gain_radius_m_ / map_.info.resolution)));
+            blacklisted_goals_.clear();
+
+            const auto [goal_x, goal_y] = gridToWorld(
+                rendezvous_goal.x, rendezvous_goal.y);
+            RCLCPP_INFO(
+                get_logger(),
+                "[%s] direct rendezvous plan: goal=(%.2f, %.2f), anchor=(%.2f, %.2f)",
+                robot_id_.c_str(), goal_x, goal_y,
+                rendezvous_anchor_.pose.position.x,
+                rendezvous_anchor_.pose.position.y);
+            if (enable_viz_) publishPathMarker(path_);
+            followPathStep();
+            return;
+        }
+
+        publishStop("already at closest reachable rendezvous point");
+        return;
+    }
 
     // 가까운 유효 frontier를 우선 사용한다. 가까운 후보가 모두 장애물
     // clearance/reachability 검사에서 탈락한 경우에만 탐색 범위를 넓힌다.
