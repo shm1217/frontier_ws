@@ -1940,7 +1940,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
             progress_inited_ = false;
             current_goal_ = goal_g;
             has_goal_ = true;
-            following_rendezvous_ = true;
+            following_rendezvous_ = false;
             goal_commit_start_ = this->now();
             goal_initial_ig_ = infoGainAround(
                 current_goal_, (int)std::ceil(info_gain_radius_m_ / map_.info.resolution));
@@ -2008,6 +2008,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
             progress_inited_ = false;
             current_goal_ = rendezvous_goal;
             has_goal_ = true;
+            following_rendezvous_ = true;
             goal_commit_start_ = this->now();
             goal_initial_ig_ = infoGainAround(
                 current_goal_,
