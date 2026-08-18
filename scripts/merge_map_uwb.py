@@ -158,6 +158,9 @@ class MergeMapUwb(Node):
         self.rendezvous_enabled = bool(
             self.declare_parameter("rendezvous_enabled", True).value
         )
+        self.rendezvous_auto_enabled = bool(
+            self.declare_parameter("rendezvous_auto_enabled", False).value
+        )
         self.rendezvous_trigger_timeout = float(
             self.declare_parameter("rendezvous_trigger_timeout_s", 60.0).value
         )
@@ -315,7 +318,7 @@ class MergeMapUwb(Node):
             elapsed = (now - self.rendezvous_cycle_start[ns]).nanoseconds * 1e-9
             timed_out = elapsed >= self.rendezvous_trigger_timeout
             should_rendezvous = self.rendezvous_forced[ns] or (
-                not self.locked and timed_out
+                self.rendezvous_auto_enabled and not self.locked and timed_out
             )
             estimate = self.anchors.get(ns)
             pose = self.latest_base_pose.get(ns)
