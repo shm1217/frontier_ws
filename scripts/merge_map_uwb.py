@@ -165,6 +165,9 @@ class MergeMapUwb(Node):
         self.rendezvous_arrival_radius = float(
             self.declare_parameter("rendezvous_arrival_radius_m", 2.0).value
         )
+        self.rendezvous_manual_topic = str(
+            self.declare_parameter("rendezvous_manual_topic", "/rendezvous_now").value
+        )
 
         self.maps = {}
         self.samples = {ns: deque(maxlen=self.max_samples) for ns in self.robots}
@@ -173,6 +176,7 @@ class MergeMapUwb(Node):
         }
         self.latest_base_pose = {ns: None for ns in self.robots}
         self.rendezvous_active = {ns: False for ns in self.robots}
+        self.rendezvous_forced = {ns: False for ns in self.robots}
         self.rendezvous_cycle_start = {
             ns: self.get_clock().now() for ns in self.robots
         }
@@ -229,8 +233,29 @@ class MergeMapUwb(Node):
             )
             for ns in self.robots
         }
+        self.rendezvous_manual_sub = self.create_subscription(
+            Bool, self.rendezvous_manual_topic, self.on_manual_rendezvous, 10
+        )
         self.timer = self.create_timer(1.0, self.tick)
         self.publish_valid(False)
+
+    def on_manual_rendezvous(self, msg):
+        now = self.get_clock().now()
+        if msg.data and self.locked:
+            self.get_logger().info(
+                "manual rendezvous ignored: map registration is already locked"
+            )
+            return
+
+        for ns in self.robots:
+            self.rendezvous_forced[ns] = bool(msg.data)
+            if not msg.data:
+                self.rendezvous_cycle_start[ns] = now
+
+        if msg.data:
+            self.get_logger().warn("manual rendezvous requested for all robots")
+        else:
+            self.get_logger().info("manual rendezvous cancelled for all robots")
 
     def publish_valid(self, value):
         msg = Bool()
@@ -283,6 +308,7 @@ class MergeMapUwb(Node):
         for ns in self.robots:
             elapsed = (now - self.rendezvous_cycle_start[ns]).nanoseconds * 1e-9
             timed_out = elapsed >= self.rendezvous_trigger_timeout
+            should_rendezvous = self.rendezvous_forced[ns] or timed_out
             estimate = self.anchors.get(ns)
             pose = self.latest_base_pose.get(ns)
             if estimate is None or pose is None:
@@ -294,15 +320,16 @@ class MergeMapUwb(Node):
                 continue
             distance = math.hypot(anchor[0] - pose[0], anchor[1] - pose[1])
             if distance <= self.rendezvous_arrival_radius:
-                if self.rendezvous_active[ns] or timed_out:
+                if self.rendezvous_active[ns] or should_rendezvous:
                     self.rendezvous_cycle_start[ns] = now
                     self.get_logger().info(
                         f"[{ns}] rendezvous arrived; restarting "
                         f"{self.rendezvous_trigger_timeout:.1f}s exploration window"
                     )
+                self.rendezvous_forced[ns] = False
                 self.rendezvous_active[ns] = False
                 continue
-            if not timed_out:
+            if not should_rendezvous:
                 self.rendezvous_active[ns] = False
                 continue
 
@@ -316,7 +343,7 @@ class MergeMapUwb(Node):
             if not self.rendezvous_active[ns]:
                 self.get_logger().info(
                     f"[{ns}] rendezvous active: anchor_distance={distance:.2f}m, "
-                    f"elapsed={elapsed:.1f}s"
+                    f"elapsed={elapsed:.1f}s, manual={self.rendezvous_forced[ns]}"
                 )
             self.rendezvous_active[ns] = True
 

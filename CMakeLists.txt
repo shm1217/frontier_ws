@@ -108,6 +108,11 @@ install(DIRECTORY launch config scripts
   DESTINATION share/${PROJECT_NAME}
 )
 
+install(PROGRAMS
+  scripts/rendezvous_keyboard.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 install(
   DIRECTORY appearance_file
   DESTINATION share/${PROJECT_NAME}
