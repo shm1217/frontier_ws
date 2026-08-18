@@ -37,7 +37,7 @@ class MergeMapUwb(Node):
     def __init__(self):
         super().__init__("merge_map_uwb")
         self.robots = list(
-            self.declare_parameter("robot_namespaces", ["tb3_1", "tb3_2"]).value
+            self.declare_parameter("robot_namespaces", ["tb3_0", "tb3_1"]).value
         )
         self.reference_robot = str(
             self.declare_parameter("reference_robot", self.robots[0]).value

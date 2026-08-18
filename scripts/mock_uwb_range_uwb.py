@@ -25,7 +25,7 @@ class MockUwbRangeNode(Node):
         super().__init__("mock_uwb_range_uwb")
 
         self.robots = list(
-            self.declare_parameter("robot_namespaces", ["tb3_1", "tb3_2"]).value
+            self.declare_parameter("robot_namespaces", ["tb3_0", "tb3_1"]).value
         )
         self.anchor_x = float(self.declare_parameter("anchor_x", -3.0).value)
         self.anchor_y = float(self.declare_parameter("anchor_y", 5.0).value)
