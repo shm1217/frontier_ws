@@ -270,6 +270,7 @@ private:
     rclcpp::Time last_rendezvous_anchor_time_{0, 0, RCL_ROS_TIME};
     bool has_rendezvous_anchor_ = false;
     bool rendezvous_replan_requested_ = false;
+    bool following_rendezvous_ = false;
 
     double reserve_exclusion_radius_m_ = 1.5;
     double reserve_ttl_s_ = 5.0;

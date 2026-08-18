@@ -1827,6 +1827,17 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
         (rendezvous_anchor_.header.frame_id.empty() ||
             rendezvous_anchor_.header.frame_id == map_frame_);
 
+    if (following_rendezvous_ && !rendezvous_active) {
+        clearPathAndCancel();
+        following_rendezvous_ = false;
+        blacklisted_goals_.clear();
+        RCLCPP_INFO(
+            get_logger(),
+            "[%s] rendezvous released; resuming frontier exploration",
+            robot_id_.c_str());
+        publishStop("rendezvous released");
+    }
+
     if (!path_.empty()) {
         // Gate 없는 분산 탐사에서는 현재 목표 예약을 TTL보다 빠르게 갱신한다.
         if (!using_local_map_ &&
@@ -1929,6 +1940,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
             progress_inited_ = false;
             current_goal_ = goal_g;
             has_goal_ = true;
+            following_rendezvous_ = true;
             goal_commit_start_ = this->now();
             goal_initial_ig_ = infoGainAround(
                 current_goal_, (int)std::ceil(info_gain_radius_m_ / map_.info.resolution));
@@ -2132,6 +2144,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     current_goal_ = goal;
 
     has_goal_ = true;
+    following_rendezvous_ = false;
 
     goal_commit_start_ = this->now();
     goal_initial_ig_ = infoGainAround(

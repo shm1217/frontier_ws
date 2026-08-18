@@ -294,7 +294,7 @@ class MergeMapUwb(Node):
                 continue
             distance = math.hypot(anchor[0] - pose[0], anchor[1] - pose[1])
             if distance <= self.rendezvous_arrival_radius:
-                if self.rendezvous_active[ns]:
+                if self.rendezvous_active[ns] or timed_out:
                     self.rendezvous_cycle_start[ns] = now
                     self.get_logger().info(
                         f"[{ns}] rendezvous arrived; restarting "
