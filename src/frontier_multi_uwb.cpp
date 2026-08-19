@@ -53,7 +53,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     dynamic_max_angular_speed_ = this->declare_parameter<double>("dynamic_max_angular_speed", 0.8);
     dynamic_stop_distance_ = this->declare_parameter<double>("dynamic_stop_distance", 0.32);
     dynamic_slow_distance_ = this->declare_parameter<double>("dynamic_slow_distance", 0.55);
-    dwb_cmd_timeout_s_ = this->declare_parameter<double>("dwb_cmd_timeout_s", 0.50);
+    dwb_cmd_timeout_s_ = this->declare_parameter<double>("dwb_cmd_timeout_s", 1.0); // 0.50
 
     stuck_timeout_s_ = this->declare_parameter<double>("stuck_timeout_s", 8.0);
     stuck_min_move_m_ = this->declare_parameter<double>("stuck_min_move_m", 0.02);
