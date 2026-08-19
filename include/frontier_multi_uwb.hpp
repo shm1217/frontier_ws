@@ -373,6 +373,7 @@ private:
     rclcpp::Subscription<frontier_ws::msg::DynamicObstacle>::SharedPtr obs_sub_;
     void obsCallback(const frontier_ws::msg::DynamicObstacle::SharedPtr msg);
 
+    int no_plan_count_ = 0;
 
 };
 
