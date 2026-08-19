@@ -2395,11 +2395,25 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
             new_path);
 
     if (!planned) {
-
+        no_plan_count_++;
+    
+        if (no_plan_count_ >= 10) {
+            RCLCPP_WARN(
+                get_logger(),
+                "[%s] no plan %d times -> clearing blacklist",
+                robot_id_.c_str(),
+                no_plan_count_);
+    
+            blacklisted_goals_.clear();
+            no_plan_count_ = 0;
+        }
+    
         publishStop("no plan");
-
         return;
     }
+    
+    // 계획을 하나라도 찾았으면 연속 실패 횟수 초기화
+    no_plan_count_ = 0;
 
     path_ = std::move(new_path);
 
