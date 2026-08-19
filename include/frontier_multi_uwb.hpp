@@ -323,13 +323,13 @@ private:
     double plan_retry_period_s_ = 0.75;
 
     rclcpp::Time goal_commit_start_{0,0,RCL_ROS_TIME};
-    double min_commit_time_s_ = 3.0;       
+    double min_commit_time_s_ = 5.0; // 3.0       
 
-    double ig_drop_thresh_ = 0.5;
+    double ig_drop_thresh_ = 0.05; // 0.5
     double goal_initial_ig_ = 0.0;
-    double ig_drop_ratio_ = 0.40;
+    double ig_drop_ratio_ = 0.20; // 0.40
     double ig_drop_baseline_min_ = 0.20;
-    double ig_replan_min_age_s_ = 2.0;
+    double ig_replan_min_age_s_ = 5.0; // 2.0
 
     std::string gate_goal_topic_;
     std::string map_delta_topic_;
