@@ -7,6 +7,7 @@
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <nav2_msgs/action/follow_path.hpp>
+#include <nav2_msgs/srv/clear_entire_costmap.hpp>
 #include <geometry_msgs/msg/twist.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 
@@ -147,6 +148,7 @@ private:
     geometry_msgs::msg::Twist applyDynamicSafetyFilter(geometry_msgs::msg::Twist cmd) const;
     void cancelDwbGoal();
     void clearPathAndCancel();
+    bool requestLocalCostmapClear(const GridPose& failed_goal);
     nav_msgs::msg::Path makeNavPath() const;
     void onDwbCmd(const geometry_msgs::msg::Twist::SharedPtr msg);
 
@@ -188,6 +190,8 @@ private:
     using FollowPathGoalHandle = rclcpp_action::ClientGoalHandle<FollowPath>;
     rclcpp_action::Client<FollowPath>::SharedPtr follow_path_client_;
     FollowPathGoalHandle::SharedPtr follow_path_goal_handle_;
+    using ClearEntireCostmap = nav2_msgs::srv::ClearEntireCostmap;
+    rclcpp::Client<ClearEntireCostmap>::SharedPtr clear_costmap_client_;
     rclcpp::TimerBase::SharedPtr timer_;
 
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr path_marker_pub_;
@@ -203,6 +207,11 @@ private:
     double blacklist_radius_m_ = 0.60;
     double dwb_failure_blacklist_ttl_s_{30.0};
     double dwb_failure_blacklist_radius_m_{1.0};
+    std::string clear_costmap_service_ = "local_costmap/clear_entirely_local_costmap";
+    double dwb_recovery_match_radius_m_ = 0.50;
+    bool costmap_clear_in_progress_ = false;
+    bool has_dwb_recovery_goal_ = false;
+    GridPose dwb_recovery_goal_;
 
     std::string robot_id_;
     std::string map_topic_, cmd_topic_, dwb_cmd_topic_, dynamic_cmd_topic_, scan_topic_;

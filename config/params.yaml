@@ -125,6 +125,9 @@ frontier_multi_uwb:
     # DWB ABORTED(code 6)는 같은 접근 불가 cluster를 충분히 오래 제외한다.
     dwb_failure_blacklist_ttl_s: 6.0
     dwb_failure_blacklist_radius_m: 0.35
+    # 첫 abort에서는 local costmap clear 후 한 번 재계획하고, 재실패 시 제외한다.
+    clear_costmap_service: "local_costmap/clear_entirely_local_costmap"
+    dwb_recovery_match_radius_m: 0.50
     gate_plan_fail_max: 3
 
     # ---------------------------------------------------------

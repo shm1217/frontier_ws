@@ -112,6 +112,10 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
         "dwb_failure_blacklist_ttl_s", 30.0);
     dwb_failure_blacklist_radius_m_ = this->declare_parameter<double>(
         "dwb_failure_blacklist_radius_m", 1.0);
+    clear_costmap_service_ = this->declare_parameter<std::string>(
+        "clear_costmap_service", "local_costmap/clear_entirely_local_costmap");
+    dwb_recovery_match_radius_m_ = this->declare_parameter<double>(
+        "dwb_recovery_match_radius_m", 0.50);
     gate_plan_fail_max_ = this->declare_parameter<int>("gate_plan_fail_max", 3);
 
     local_map_topic_ = this->declare_parameter<std::string>("local_map_topic", "map");
@@ -170,6 +174,8 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     dynamic_cmd_pub_ = this->create_publisher<geometry_msgs::msg::Twist>(dynamic_cmd_topic_, 10);
     follow_path_client_ = rclcpp_action::create_client<FollowPath>(
       this, follow_path_action_name_);
+    clear_costmap_client_ = this->create_client<ClearEntireCostmap>(
+      clear_costmap_service_);
 
     path_marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>(path_marker_topic_, 10);
     frontier_marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>(frontier_marker_topic_, 10);
@@ -1465,18 +1471,37 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
       follow_path_goal_handle_.reset();
       path_sent_to_dwb_ = false;
       if (result.code == rclcpp_action::ResultCode::ABORTED) {
-        addToBlacklist(sent_goal, dwb_failure_blacklist_ttl_s_,
-                       dwb_failure_blacklist_radius_m_);
-        RCLCPP_WARN(
-            get_logger(),
-            "[%s] DWB aborted goal (%d, %d); blacklist %.2fm for %.1fs",
-            robot_id_.c_str(), sent_goal.x, sent_goal.y,
-            dwb_failure_blacklist_radius_m_, dwb_failure_blacklist_ttl_s_);
+        const double recovery_distance = has_dwb_recovery_goal_
+            ? std::hypot(
+                (sent_goal.x - dwb_recovery_goal_.x) * map_.info.resolution,
+                (sent_goal.y - dwb_recovery_goal_.y) * map_.info.resolution)
+            : std::numeric_limits<double>::infinity();
+        const bool recovery_already_attempted =
+            has_dwb_recovery_goal_ &&
+            recovery_distance <= dwb_recovery_match_radius_m_;
+
+        if (!recovery_already_attempted &&
+            requestLocalCostmapClear(sent_goal)) {
+          RCLCPP_WARN(
+              get_logger(),
+              "[%s] DWB aborted goal (%d, %d); clearing local costmap before retry",
+              robot_id_.c_str(), sent_goal.x, sent_goal.y);
+        } else {
+          addToBlacklist(sent_goal, dwb_failure_blacklist_ttl_s_,
+                         dwb_failure_blacklist_radius_m_);
+          has_dwb_recovery_goal_ = false;
+          RCLCPP_WARN(
+              get_logger(),
+              "[%s] DWB recovery failed for goal (%d, %d); blacklist %.2fm for %.1fs",
+              robot_id_.c_str(), sent_goal.x, sent_goal.y,
+              dwb_failure_blacklist_radius_m_, dwb_failure_blacklist_ttl_s_);
+        }
       }
       path_.clear();
       has_goal_ = false;
       path_blocked_since_ = rclcpp::Time(0, 0, get_clock()->get_clock_type());
       if (result.code == rclcpp_action::ResultCode::SUCCEEDED) {
+        has_dwb_recovery_goal_ = false;
         // 도착한 gate goal을 다음 timer에서 다시 계획하지 않는다.
         has_gate_goal_ = false;
         new_gate_goal_ = false;
@@ -1534,6 +1559,37 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     path_.clear();
     wp_idx_ = 0;
     has_goal_ = false;
+  }
+
+  bool FrontierExplorerMulti::requestLocalCostmapClear(
+      const GridPose& failed_goal) {
+    if (!clear_costmap_client_->service_is_ready()) {
+      RCLCPP_WARN(
+          get_logger(), "[%s] local costmap clear service '%s' is not ready",
+          robot_id_.c_str(), clear_costmap_service_.c_str());
+      return false;
+    }
+
+    costmap_clear_in_progress_ = true;
+    has_dwb_recovery_goal_ = true;
+    dwb_recovery_goal_ = failed_goal;
+    auto request = std::make_shared<ClearEntireCostmap::Request>();
+    clear_costmap_client_->async_send_request(
+        request,
+        [this](rclcpp::Client<ClearEntireCostmap>::SharedFuture future) {
+          try {
+            (void)future.get();
+            RCLCPP_WARN(
+                get_logger(), "[%s] local costmap cleared; replanning once",
+                robot_id_.c_str());
+          } catch (const std::exception& ex) {
+            RCLCPP_ERROR(
+                get_logger(), "[%s] local costmap clear failed: %s",
+                robot_id_.c_str(), ex.what());
+          }
+          costmap_clear_in_progress_ = false;
+        });
+    return true;
   }
 
   nav_msgs::msg::Path FrontierExplorerMulti::makeNavPath() const {
@@ -2027,6 +2083,11 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
 
     if (exploration_done_) {
         publishStop("exploration done");
+        return;
+    }
+
+    if (costmap_clear_in_progress_) {
+        publishStop("clearing local costmap");
         return;
     }
 
