@@ -12,7 +12,7 @@ from nav2_common.launch import RewrittenYaml
 
 def launch_setup(context, *args, **kwargs):
     use_sim_time_str = LaunchConfiguration("use_sim_time").perform(context)
-    use_sim_time = use_sim_time_str.lower() in ("tsrue", "1", "yes")
+    use_sim_time = use_sim_time_str.lower() in ("true", "1", "yes")
     use_sim_time_str = "True" if use_sim_time else "False"
 
     pkg_dir = get_package_share_directory('frontier_ws')
@@ -50,16 +50,16 @@ def launch_setup(context, *args, **kwargs):
         "scan_topic":  f"/{ns}/scan",
 
         "resolution": 0.05,
-        "scan_queue_size": 5,
+        "scan_queue_size": 1,
 
         "max_laser_range": 8.0,
         "min_laser_range": 0.12,
 
         "transform_publish_period": 0.02,
-        "tf_buffer_duration": 30.0,
+        "tf_buffer_duration": 10.0,
         "transform_timeout": 0.2,
 
-        "map_update_interval": 1.0,
+        "map_update_interval": 0.2,
 
         "do_loop_closing": True,
         "loop_search_maximum_distance": 3.0,
@@ -68,8 +68,8 @@ def launch_setup(context, *args, **kwargs):
 
         "use_scan_matching": True,
         "use_scan_barycenter": True,
-        "minimum_travel_distance": 0.0,
-        "minimum_travel_heading": 0.0,
+        "minimum_travel_distance": 0.05,
+        "minimum_travel_heading": 0.05,
         "minimum_time_interval": 0.1,
 
         "mode": "mapping",
@@ -81,7 +81,7 @@ def launch_setup(context, *args, **kwargs):
         executable='async_slam_toolbox_node',
         name='slam_toolbox',
         namespace=ns,
-        output='screen',
+        output='log',
         parameters=[slam_params],
         remappings=[
             ('scan',  f'/{ns}/scan'),

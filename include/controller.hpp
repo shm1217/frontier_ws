@@ -61,7 +61,7 @@ private:
     int obs_N = 20;   // 몇 번 예측할건지
     int robot_N = 40; // 몇 번 예측할건지
     double dt = 0.1;  // 몇 초 간격으로 예측할건지
-    double robot_radius = 0.2;
+    double robot_radius = 0.4;
     double obstacle_radius = 0.2;
     double max_v = 0.2;
     double max_w = 2.5;

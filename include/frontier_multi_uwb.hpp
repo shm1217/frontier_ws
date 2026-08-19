@@ -45,6 +45,8 @@ struct WorldPose { double x{0}, y{0}, yaw{0}; };
 struct BlacklistedGoal {
     GridPose g;
     rclcpp::Time stamp;
+    double ttl_s{8.0};
+    double radius_m{0.60};
 };
 
 static inline int IDX(int x, int y, int w) { return y * w + x; }
@@ -107,6 +109,12 @@ private:
     // (5) 경로 계획 및 dbscan clustering 
     std::vector<GridPose> astar(const GridPose &start, const GridPose &goal,
                              const std::vector<uint8_t> &astarMask) const;
+    std::vector<GridPose> simplifyPath(
+        const std::vector<GridPose>& path,
+        const std::vector<uint8_t>& obstacle_mask) const;
+    bool lineOfSightCost(
+        const GridPose& from, const GridPose& to,
+        const std::vector<uint8_t>& obstacle_mask, int& cost) const;
     double distMeters(const GridPose& a, const GridPose& b) const;
     std::vector<int> regionQuery(const std::vector<GridPose>& pts, int idx, double eps_m) const;
     std::vector<int> dbscanCluster(const std::vector<GridPose>& pts, double eps_m, int min_pts) const;
@@ -149,9 +157,9 @@ private:
     void publishPathMarker(const std::vector<GridPose>& path);
     void publishFrontierMarkers(const std::vector<GridPose>& frontiers);
     void publishInflationMaskMarker(const std::vector<uint8_t>& obsInfl, const GridPose& center_g);
-    void publishClusterRings(const std::vector<GridPose>& pts,
-                         const std::vector<int>& labels,
-                         const std::vector<GridPose>& representatives);
+    void publishClusterMarkers(const std::vector<GridPose>& pts,
+                               const std::vector<int>& labels);
+    void publishSelectedGoalMarker(const GridPose& goal);
 
     void publishMapDelta();
     void onGateGoal(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
@@ -163,7 +171,8 @@ private:
     void onRendezvousAnchor(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
     void onTimer();
 
-    void addToBlacklist(const GridPose& g);
+    void addToBlacklist(const GridPose& g, double ttl_s = -1.0,
+                        double radius_m = -1.0);
     bool isBlacklisted(const GridPose& g) const;
 
     // ---------------------------------------------------------
@@ -190,8 +199,10 @@ private:
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
     std::vector<BlacklistedGoal> blacklisted_goals_;
-    double blacklist_ttl_s_{20.0};
-    double blacklist_radius_m_ = 1.5;
+    double blacklist_ttl_s_{8.0};
+    double blacklist_radius_m_ = 0.60;
+    double dwb_failure_blacklist_ttl_s_{30.0};
+    double dwb_failure_blacklist_radius_m_{1.0};
 
     std::string robot_id_;
     std::string map_topic_, cmd_topic_, dwb_cmd_topic_, dynamic_cmd_topic_, scan_topic_;
@@ -207,16 +218,16 @@ private:
 
     int obstacle_threshold_ = 60;
     int free_threshold_ = 50;
-    double inflation_radius_m_ = 0.2;
+    double inflation_radius_m_ = 0.4;
     double frontier_search_radius_m_ = 8.0;
     double frontier_extended_search_radius_m_ = 12.0;
     bool frontier_full_map_fallback_ = true;
 
     double avoid_enter_dist_ = 0.3;
 
-    double frontier_clearance_m_ = 0.15;
-    double path_clearance_m_ = 0.1;
-    int path_clearance_cost_weight_ = 30;
+    double frontier_clearance_m_ = 0.4;
+    double path_clearance_m_ = 0.55;
+    int path_clearance_cost_weight_ = 25;
     std::vector<int> clearance_cost_map_;
 
     int keep_open_cells_ = 2;
@@ -230,8 +241,8 @@ private:
     std::vector<uint8_t> laser_blocked_;
     std::chrono::steady_clock::time_point last_laser_update_;
     double laser_block_ttl_ = 1.0;
-    double laser_inflation_radius_m_ = 0.15;
-    double laser_obstacle_max_range_ = 0.40;
+    double laser_inflation_radius_m_ = 0.40;
+    double laser_obstacle_max_range_ = 0.70;
 
     std::shared_ptr<Controller> dynamic_controller_;
     geometry_msgs::msg::Twist last_dwb_cmd_;
@@ -244,6 +255,8 @@ private:
 
     double stuck_timeout_s_{5.0};
     double stuck_min_move_m_{0.02};
+    double stuck_grace_s_{8.0};
+    bool dwb_motion_cmd_seen_ = false;
     double path_blocked_lookahead_m_ = 1.5;
     double path_blocked_confirm_s_ = 0.3;
     rclcpp::Time path_blocked_since_{0, 0, RCL_ROS_TIME};
@@ -265,12 +278,15 @@ private:
     double alpha_ = 1.0, beta_ = 1.0, delta_ = 1.0;
     std::string rendezvous_anchor_topic_ = "rendezvous_anchor";
     double rendezvous_command_ttl_s_ = 3.0;
+    double rendezvous_arrival_radius_m_ = 2.0;
+    double rendezvous_direct_min_distance_m_ = 0.6;
     double rendezvous_utility_weight_ = 4.0;
     geometry_msgs::msg::PoseStamped rendezvous_anchor_;
     rclcpp::Time last_rendezvous_anchor_time_{0, 0, RCL_ROS_TIME};
     bool has_rendezvous_anchor_ = false;
     bool rendezvous_replan_requested_ = false;
     bool following_rendezvous_ = false;
+    bool rendezvous_arrived_ = false;
 
     double reserve_exclusion_radius_m_ = 1.5;
     double reserve_ttl_s_ = 5.0;
@@ -295,7 +311,8 @@ private:
     rclcpp::Time last_robot_position_pub_{0, 0, RCL_ROS_TIME};
     double robot_position_ttl_s_ = 1.0;
     double robot_position_period_s_ = 0.2;
-    double other_robot_radius_m_ = 0.32;
+    double other_robot_radius_m_ = 0.40;
+    double other_robot_path_lookahead_m_ = 1.5;
 
     GridPose current_goal_;
     bool has_goal_ = false;          

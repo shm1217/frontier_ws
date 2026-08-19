@@ -114,8 +114,14 @@ class MergeMapUwb(Node):
             self.declare_parameter("min_overlap_score", 0.5).value
         )
         self.min_overlap_coverage = float(
-            self.declare_parameter("min_overlap_coverage", 0.1).value ## 0.1
-        ) 
+            self.declare_parameter("min_overlap_coverage", 0.1).value
+        )
+        # A high feature score from a small wall fragment is not sufficient to
+        # establish a map transform. Apply this guard to every registration
+        # mode, including feature-supported global candidates.
+        self.min_overlap_known_cells = int(
+            self.declare_parameter("min_overlap_known_cells", 150).value
+        )
         self.wall_tolerance = float(
             self.declare_parameter("wall_tolerance_m", 0.10).value
         )
@@ -795,6 +801,7 @@ class MergeMapUwb(Node):
             valid = (
                 item["overlap"] >= self.min_overlap_score
                 and item["coverage"] >= self.min_overlap_coverage
+                and item["known"] >= self.min_overlap_known_cells
                 and item["anchor_error"] <= self.max_anchor_match
             )
             if not valid:

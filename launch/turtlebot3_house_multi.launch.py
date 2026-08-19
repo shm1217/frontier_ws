@@ -83,8 +83,8 @@ def generate_launch_description():
     robots = load_robots(os.path.join(pkg_this, "config", "robots.yaml"))
     # TODO: 경로 설정
     default_world = first_existing([
-    "/home/hdzggg/turtlebot3_simulations/install/turtlebot3_gazebo/share/turtlebot3_gazebo/worlds/turtlebot3_house.world",
-    "/home/hdzggg/turtlebot3_simulations/turtlebot3_gazebo/worlds/turtlebot3_house.world",
+    "/home/hdzggg/turtlebot3_simulations/install/turtlebot3_gazebo/share/turtlebot3_gazebo/worlds/lobby6.world",
+    "/home/hdzggg/turtlebot3_simulations/turtlebot3_gazebo/worlds/lobby6.world",
     ])
     # default_world = first_existing([
     #     os.path.join(pkg_tb3, "worlds", "turtlebot3_random2.world"),

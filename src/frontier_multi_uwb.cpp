@@ -26,7 +26,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     obstacle_threshold_ = this->declare_parameter<int>("obstacle_threshold", 60);
     free_threshold_     = this->declare_parameter<int>("free_threshold", 50);
 
-    inflation_radius_m_       = this->declare_parameter<double>("inflation_radius_m", 0.25);
+    inflation_radius_m_       = this->declare_parameter<double>("inflation_radius_m", 0.40);
     frontier_search_radius_m_ = this->declare_parameter<double>("frontier_search_radius_m", 6.0);
     frontier_extended_search_radius_m_ = this->declare_parameter<double>(
         "frontier_extended_search_radius_m", 12.0);
@@ -35,10 +35,10 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
 
     avoid_enter_dist_ = this->declare_parameter<double>("avoid_enter_dist", 0.35);
 
-    frontier_clearance_m_ = this->declare_parameter<double>("frontier_clearance_m", 0.25);
-    path_clearance_m_     = this->declare_parameter<double>("path_clearance_m", 0.15);
+    frontier_clearance_m_ = this->declare_parameter<double>("frontier_clearance_m", 0.40);
+    path_clearance_m_     = this->declare_parameter<double>("path_clearance_m", 0.55);
     path_clearance_cost_weight_ = this->declare_parameter<int>(
-        "path_clearance_cost_weight", 30);
+        "path_clearance_cost_weight", 25);
 
     keep_open_cells_ = this->declare_parameter<int>("keep_open_cells", 2);
 
@@ -47,16 +47,17 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     dbscan_min_pts_ = this->declare_parameter<int>("dbscan_min_pts", 10);
  
     laser_block_ttl_ = this->declare_parameter<double>("laser_block_ttl", 1.0);
-    laser_inflation_radius_m_ = this->declare_parameter<double>("laser_inflation_radius_m", 0.12);
-    laser_obstacle_max_range_ = this->declare_parameter<double>("laser_obstacle_max_range", 0.40);
+    laser_inflation_radius_m_ = this->declare_parameter<double>("laser_inflation_radius_m", 0.40);
+    laser_obstacle_max_range_ = this->declare_parameter<double>("laser_obstacle_max_range", 0.70);
     dynamic_max_linear_speed_ = this->declare_parameter<double>("dynamic_max_linear_speed", 0.08);
     dynamic_max_angular_speed_ = this->declare_parameter<double>("dynamic_max_angular_speed", 0.8);
-    dynamic_stop_distance_ = this->declare_parameter<double>("dynamic_stop_distance", 0.32);
-    dynamic_slow_distance_ = this->declare_parameter<double>("dynamic_slow_distance", 0.55);
+    dynamic_stop_distance_ = this->declare_parameter<double>("dynamic_stop_distance", 0.45);
+    dynamic_slow_distance_ = this->declare_parameter<double>("dynamic_slow_distance", 0.70);
     dwb_cmd_timeout_s_ = this->declare_parameter<double>("dwb_cmd_timeout_s", 0.50);
 
-    stuck_timeout_s_ = this->declare_parameter<double>("stuck_timeout_s", 3.0);
-    stuck_min_move_m_ = this->declare_parameter<double>("stuck_min_move_m", 0.05);
+    stuck_timeout_s_ = this->declare_parameter<double>("stuck_timeout_s", 8.0);
+    stuck_min_move_m_ = this->declare_parameter<double>("stuck_min_move_m", 0.02);
+    stuck_grace_s_ = this->declare_parameter<double>("stuck_grace_s", 8.0);
     path_blocked_lookahead_m_ = this->declare_parameter<double>(
         "path_blocked_lookahead_m", 1.5);
     path_blocked_confirm_s_ = this->declare_parameter<double>(
@@ -69,6 +70,10 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
         "rendezvous_anchor_topic", "rendezvous_anchor");
     rendezvous_command_ttl_s_ = this->declare_parameter<double>(
         "rendezvous_command_ttl_s", 3.0);
+    rendezvous_arrival_radius_m_ = this->declare_parameter<double>(
+        "rendezvous_arrival_radius_m", 2.0);
+    rendezvous_direct_min_distance_m_ = this->declare_parameter<double>(
+        "rendezvous_direct_min_distance_m", 0.6);
     rendezvous_utility_weight_ = this->declare_parameter<double>(
         "rendezvous_utility_weight", 4.0);
 
@@ -83,7 +88,9 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     robot_position_topic_ = this->declare_parameter<std::string>("robot_position_topic", "/global_robot_positions");
     robot_position_ttl_s_ = this->declare_parameter<double>("robot_position_ttl_s", 1.0);
     robot_position_period_s_ = this->declare_parameter<double>("robot_position_period_s", 0.2);
-    other_robot_radius_m_ = this->declare_parameter<double>("other_robot_radius_m", 0.32);
+    other_robot_radius_m_ = this->declare_parameter<double>("other_robot_radius_m", 0.40);
+    other_robot_path_lookahead_m_ = this->declare_parameter<double>(
+        "other_robot_path_lookahead_m", 1.5);
 
     path_marker_topic_     = this->declare_parameter<std::string>("path_marker_topic", "path_marker");
     frontier_marker_topic_ = this->declare_parameter<std::string>("frontier_marker_topic", "frontier_markers");
@@ -99,7 +106,12 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
         "gate_goal_min_distance_m", 0.75);
     map_delta_period_s_= this->declare_parameter<double>("map_delta_period_s", 1.0);
 
-    blacklist_ttl_s_ = this->declare_parameter<double>("blacklist_ttl_s", 20.0);
+    blacklist_ttl_s_ = this->declare_parameter<double>("blacklist_ttl_s", 8.0);
+    blacklist_radius_m_ = this->declare_parameter<double>("blacklist_radius_m", 0.60);
+    dwb_failure_blacklist_ttl_s_ = this->declare_parameter<double>(
+        "dwb_failure_blacklist_ttl_s", 30.0);
+    dwb_failure_blacklist_radius_m_ = this->declare_parameter<double>(
+        "dwb_failure_blacklist_radius_m", 1.0);
     gate_plan_fail_max_ = this->declare_parameter<int>("gate_plan_fail_max", 3);
 
     local_map_topic_ = this->declare_parameter<std::string>("local_map_topic", "map");
@@ -422,10 +434,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
         if (!inBounds(nx, ny)) continue;
 
         int v = map_.data[IDX(nx, ny, W)];
-        bool near = (std::abs(dx) <=1 && std::abs(dy) <= 1);
-        if (v == UNKNOWN && !near) continue;
-
-        if (v == UNKNOWN || (v >= 0 && v <= free_threshold_)) {
+        if (v >= 0 && v <= free_threshold_) {
         mask[IDX(nx, ny, W)] = 0;
       }
 
@@ -494,18 +503,27 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     int W = (int)map_.info.width;
     int H = (int)map_.info.height;
     std::vector<uint8_t> obs(W*H, 0);
+    std::vector<uint8_t> blocked(W*H, 0);
 
     for (int y=0;y<H;y++){
       for (int x=0;x<W;x++){
         int v = map_.data[IDX(x,y,W)];
-        if (v != UNKNOWN && v >= obstacle_threshold_) obs[IDX(x,y,W)] = 1;
+        const int id = IDX(x,y,W);
+        if (v == UNKNOWN) {
+          // A path through unobserved space is not physically validated.  The
+          // frontier target itself is a known-free cell adjacent to unknown.
+          blocked[id] = 1;
+        } else if (v >= obstacle_threshold_) {
+          obs[id] = 1;
+          blocked[id] = 1;
+        }
       }
     }
 
     int rad = (int)std::ceil(inflation_radius_m_ / map_.info.resolution);
-    if (rad <= 0) return obs;
+    if (rad <= 0) return blocked;
 
-    std::vector<uint8_t> inflated = obs;
+    std::vector<uint8_t> inflated = blocked;
     for (int y=0;y<H;y++){
       for (int x=0;x<W;x++){
         if (!obs[IDX(x,y,W)]) continue;
@@ -802,7 +820,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
           cid = came[cid];
         }
         std::reverse(path.begin(), path.end());
-        return path;
+        return simplifyPath(path, astarMask);
       }
 
       for (int k=0;k<8;k++){
@@ -838,6 +856,99 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
       }
     }
     return {};
+  }
+
+  bool FrontierExplorerMulti::lineOfSightCost(
+      const GridPose& from, const GridPose& to,
+      const std::vector<uint8_t>& obstacle_mask, int& cost) const {
+    const int W = (int)map_.info.width;
+    const int H = (int)map_.info.height;
+    if ((int)obstacle_mask.size() != W * H) return false;
+
+    int x = from.x;
+    int y = from.y;
+    const int dx = std::abs(to.x - from.x);
+    const int dy = std::abs(to.y - from.y);
+    const int sx = from.x < to.x ? 1 : -1;
+    const int sy = from.y < to.y ? 1 : -1;
+    int error = dx - dy;
+    cost = 0;
+
+    while (x != to.x || y != to.y) {
+      const int previous_x = x;
+      const int previous_y = y;
+      const int twice_error = 2 * error;
+      if (twice_error > -dy) {
+        error -= dy;
+        x += sx;
+      }
+      if (twice_error < dx) {
+        error += dx;
+        y += sy;
+      }
+
+      if (x < 0 || x >= W || y < 0 || y >= H ||
+          obstacle_mask[IDX(x, y, W)]) {
+        return false;
+      }
+
+      const bool diagonal = x != previous_x && y != previous_y;
+      if (diagonal) {
+        // A diagonal segment must not squeeze through blocked cell corners.
+        if (obstacle_mask[IDX(x, previous_y, W)] ||
+            obstacle_mask[IDX(previous_x, y, W)]) {
+          return false;
+        }
+      }
+
+      int step_cost = diagonal ? 14 : 10;
+      if (clearance_cost_map_.size() == map_.data.size()) {
+        step_cost += clearance_cost_map_[IDX(x, y, W)];
+      }
+      cost += step_cost;
+    }
+    return true;
+  }
+
+  std::vector<GridPose> FrontierExplorerMulti::simplifyPath(
+      const std::vector<GridPose>& path,
+      const std::vector<uint8_t>& obstacle_mask) const {
+    if (path.size() <= 2) return path;
+
+    std::vector<int> cumulative_cost(path.size(), 0);
+    for (size_t i = 1; i < path.size(); ++i) {
+      int edge_cost = 0;
+      if (!lineOfSightCost(path[i - 1], path[i], obstacle_mask, edge_cost)) {
+        return path;
+      }
+      cumulative_cost[i] = cumulative_cost[i - 1] + edge_cost;
+    }
+
+    std::vector<GridPose> simplified;
+    simplified.reserve(path.size());
+    simplified.push_back(path.front());
+    size_t anchor = 0;
+    while (anchor + 1 < path.size()) {
+      size_t selected = anchor + 1;
+      for (size_t candidate = path.size() - 1; candidate > anchor + 1; --candidate) {
+        int shortcut_cost = 0;
+        if (!lineOfSightCost(
+                path[anchor], path[candidate], obstacle_mask, shortcut_cost)) {
+          continue;
+        }
+        const int original_cost =
+            cumulative_cost[candidate] - cumulative_cost[anchor];
+        // Do not make a visually straighter path by sacrificing the clearance
+        // preference that A* already paid for.
+        if (shortcut_cost <= original_cost + 5) {
+          selected = candidate;
+          break;
+        }
+      }
+      simplified.push_back(path[selected]);
+      anchor = selected;
+    }
+    return simplified;
   }
 
   double FrontierExplorerMulti::distMeters(const GridPose& a, const GridPose& b) const {
@@ -1064,7 +1175,16 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
       }
       double x_local, y_local;
       if (toLocal(it->second.x, it->second.y, x_local, y_local)) {
-        for (const auto& point : path_) {
+        const int start = std::clamp(wp_idx_, 0, static_cast<int>(path_.size()) - 1);
+        double checked_distance = 0.0;
+        for (int i = start; i < static_cast<int>(path_.size()); ++i) {
+          if (i > start) {
+            const auto [prev_x, prev_y] = gridToWorld(path_[i - 1].x, path_[i - 1].y);
+            const auto [curr_x, curr_y] = gridToWorld(path_[i].x, path_[i].y);
+            checked_distance += std::hypot(curr_x - prev_x, curr_y - prev_y);
+            if (checked_distance > other_robot_path_lookahead_m_) break;
+          }
+          const auto& point = path_[i];
           const auto [path_x, path_y] = gridToWorld(point.x, point.y);
           const double dx = path_x - x_local;
           const double dy = path_y - y_local;
@@ -1170,7 +1290,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     int rejected_tf = 0;
     int rejected_reservation = 0;
     int rejected_astar = 0;
-    const bool rendezvous_active = has_rendezvous_anchor_ &&
+    const bool rendezvous_active = has_rendezvous_anchor_ && !rendezvous_arrived_ &&
         (this->now() - last_rendezvous_anchor_time_).seconds() <=
             rendezvous_command_ttl_s_ &&
         (rendezvous_anchor_.header.frame_id.empty() ||
@@ -1311,8 +1431,21 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     }
 
     const auto path_id = ++active_path_id_;
+    dwb_motion_cmd_seen_ = false;
     FollowPath::Goal goal;
-    goal.path = makeNavPath();
+    auto nav_path = makeNavPath();
+    RCLCPP_WARN(
+        get_logger(),
+        "[%s] SEND PATH frame=%s size=%zu first=(%.2f, %.2f) last=(%.2f, %.2f)",
+        robot_id_.c_str(), nav_path.header.frame_id.c_str(), nav_path.poses.size(),
+        nav_path.poses.front().pose.position.x,
+        nav_path.poses.front().pose.position.y,
+        nav_path.poses.back().pose.position.x,
+        nav_path.poses.back().pose.position.y);
+    RCLCPP_WARN(
+        get_logger(), "[%s] ROBOT pose=(%.2f, %.2f)",
+        robot_id_.c_str(), robot_.x, robot_.y);
+    goal.path = std::move(nav_path);
     goal.controller_id = "FollowPath";
     goal.goal_checker_id = "general_goal_checker";
     auto options = rclcpp_action::Client<FollowPath>::SendGoalOptions();
@@ -1324,10 +1457,21 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
       }
       if (path_id == active_path_id_) follow_path_goal_handle_ = handle;
     };
-    options.result_callback = [this, path_id](const FollowPathGoalHandle::WrappedResult & result) {
+    const GridPose sent_goal = current_goal_;
+    options.result_callback = [this, path_id, sent_goal](
+        const FollowPathGoalHandle::WrappedResult & result) {
       if (path_id != active_path_id_) return;
       follow_path_goal_handle_.reset();
       path_sent_to_dwb_ = false;
+      if (result.code == rclcpp_action::ResultCode::ABORTED) {
+        addToBlacklist(sent_goal, dwb_failure_blacklist_ttl_s_,
+                       dwb_failure_blacklist_radius_m_);
+        RCLCPP_WARN(
+            get_logger(),
+            "[%s] DWB aborted goal (%d, %d); blacklist %.2fm for %.1fs",
+            robot_id_.c_str(), sent_goal.x, sent_goal.y,
+            dwb_failure_blacklist_radius_m_, dwb_failure_blacklist_ttl_s_);
+      }
       path_.clear();
       has_goal_ = false;
       path_blocked_since_ = rclcpp::Time(0, 0, get_clock()->get_clock_type());
@@ -1335,6 +1479,24 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
         // 도착한 gate goal을 다음 timer에서 다시 계획하지 않는다.
         has_gate_goal_ = false;
         new_gate_goal_ = false;
+        if (following_rendezvous_ && has_rendezvous_anchor_) {
+          const double anchor_distance = std::hypot(
+              rendezvous_anchor_.pose.position.x - robot_.x,
+              rendezvous_anchor_.pose.position.y - robot_.y);
+          if (anchor_distance <= rendezvous_arrival_radius_m_) {
+            rendezvous_arrived_ = true;
+            following_rendezvous_ = false;
+            RCLCPP_INFO(
+                get_logger(),
+                "[%s] rendezvous anchor reached after FollowPath success (%.3f m)",
+                robot_id_.c_str(), anchor_distance);
+          } else {
+            RCLCPP_INFO(
+                get_logger(),
+                "[%s] intermediate rendezvous path reached; anchor still %.3f m away",
+                robot_id_.c_str(), anchor_distance);
+          }
+        }
       }
       if (result.code != rclcpp_action::ResultCode::SUCCEEDED) {
         RCLCPP_WARN(get_logger(), "[%s] DWB FollowPath ended with code %d",
@@ -1349,6 +1511,10 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
       const geometry_msgs::msg::Twist::SharedPtr msg) {
     last_dwb_cmd_ = *msg;
     last_dwb_cmd_time_ = this->now();
+    if (std::hypot(msg->linear.x, msg->linear.y) > 0.005 ||
+        std::abs(msg->angular.z) > 0.01) {
+      dwb_motion_cmd_seen_ = true;
+    }
   }
 
   void FrontierExplorerMulti::cancelDwbGoal() {
@@ -1475,6 +1641,13 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
   }
 
   bool FrontierExplorerMulti::isRobotStuck() {
+    // DWB가 경로를 수락하고 실제 속도 명령을 만들 시간을 먼저 보장한다.
+    // 유효 속도를 한 번도 만들지 못한 경우에는 Nav2 progress checker가
+    // 원인을 보존한 채 abort하도록 두고 frontier가 경로를 선제 취소하지 않는다.
+    if ((this->now() - goal_commit_start_).seconds() < stuck_grace_s_ ||
+        !dwb_motion_cmd_seen_) {
+      return false;
+    }
     if (!progress_inited_) {
       resetStuckCheck();
       return false;
@@ -1631,69 +1804,110 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     infl_marker_pub_->publish(m);
   }
 
-  void FrontierExplorerMulti::publishClusterRings(const std::vector<GridPose>& pts,
-                         const std::vector<int>&,
-                         const std::vector<GridPose>& representatives){
-    if (!enable_viz_ || !has_map_ || representatives.empty()) return;
+  void FrontierExplorerMulti::publishClusterMarkers(
+      const std::vector<GridPose>& pts, const std::vector<int>& labels) {
+    if (!enable_viz_ || !has_map_ || !cluster_marker_pub_) return;
 
     visualization_msgs::msg::MarkerArray marker_array;
     visualization_msgs::msg::Marker delete_marker;
     delete_marker.action = visualization_msgs::msg::Marker::DELETEALL;
     marker_array.markers.push_back(delete_marker);
 
-    double res = map_.info.resolution;
-    auto now = this->now();
-
-    for (size_t i = 0; i < representatives.size(); ++i) {
-      const auto& rep = representatives[i];
-      visualization_msgs::msg::Marker points_marker;
-      points_marker.header.frame_id = map_frame_;
-      points_marker.header.stamp = now;
-      points_marker.ns = robot_id_ + "_full_shape";
-      points_marker.id = i;
-      points_marker.type = visualization_msgs::msg::Marker::POINTS;
-      points_marker.scale.x = res * 1.2; 
-      points_marker.scale.y = res * 1.2;
-
-      visualization_msgs::msg::Marker sphere_marker;
-      sphere_marker.header.frame_id = "world";
-      sphere_marker.header.stamp = now;
-      sphere_marker.ns = robot_id_ + "_centroid";
-      sphere_marker.id = i;
-      sphere_marker.type = visualization_msgs::msg::Marker::SPHERE;
-      sphere_marker.scale.x = 0.25;
-      sphere_marker.scale.y = 0.25;
-      sphere_marker.scale.z = 0.05;
-
-      if (robot_id_ == "tb3_0") {
-        points_marker.color.r = 1.0f; points_marker.color.a = 0.6f;
-        sphere_marker.color.r = 1.0f; sphere_marker.color.a = 0.9f;
-      } else if (robot_id_ == "tb3_1"){
-        points_marker.color.g = 1.0f; points_marker.color.a = 0.6f;
-        sphere_marker.color.g = 1.0f; sphere_marker.color.a = 0.9f;
-      } else {
-        points_marker.color.b = 1.0f; points_marker.color.a = 0.6f;
-        sphere_marker.color.b = 1.0f; sphere_marker.color.a = 0.9f;
+    int max_label = -1;
+    for (int label : labels) max_label = std::max(max_label, label);
+    std::vector<GridPose> centers;
+    if (max_label >= 0 && labels.size() == pts.size()) {
+      std::vector<double> sum_x(max_label + 1, 0.0);
+      std::vector<double> sum_y(max_label + 1, 0.0);
+      std::vector<int> counts(max_label + 1, 0);
+      for (size_t i = 0; i < pts.size(); ++i) {
+        if (labels[i] < 0) continue;
+        sum_x[labels[i]] += pts[i].x;
+        sum_y[labels[i]] += pts[i].y;
+        ++counts[labels[i]];
       }
-
-      sphere_marker.pose.position.x = map_.info.origin.position.x + rep.x * res;
-      sphere_marker.pose.position.y = map_.info.origin.position.y + rep.y * res;
-      sphere_marker.pose.position.z = 0.15;
-
-      for (size_t j = 0; j < pts.size(); ++j) {
-        if (distMeters(rep, pts[j]) <= dbscan_eps_m_ * 1.5) {
-          geometry_msgs::msg::Point p;
-          p.x = map_.info.origin.position.x + pts[j].x * res;
-          p.y = map_.info.origin.position.y + pts[j].y * res;
-          p.z = 0.1;
-          points_marker.points.push_back(p);
+      for (int label = 0; label <= max_label; ++label) {
+        if (counts[label] == 0) continue;
+        const double center_x = sum_x[label] / counts[label];
+        const double center_y = sum_y[label] / counts[label];
+        int nearest = -1;
+        double nearest_distance = std::numeric_limits<double>::infinity();
+        for (size_t i = 0; i < pts.size(); ++i) {
+          if (labels[i] != label) continue;
+          const double distance = std::hypot(
+              pts[i].x - center_x, pts[i].y - center_y);
+          if (distance < nearest_distance) {
+            nearest_distance = distance;
+            nearest = static_cast<int>(i);
+          }
         }
+        if (nearest >= 0) centers.push_back(pts[nearest]);
       }
-
-      marker_array.markers.push_back(points_marker);
-      marker_array.markers.push_back(sphere_marker);
     }
 
+    std::sort(centers.begin(), centers.end(), [&](const GridPose& a, const GridPose& b) {
+      const auto [a_x, a_y] = gridToWorld(a.x, a.y);
+      const auto [b_x, b_y] = gridToWorld(b.x, b.y);
+      const double a_distance = std::hypot(a_x - robot_.x, a_y - robot_.y);
+      const double b_distance = std::hypot(b_x - robot_.x, b_y - robot_.y);
+      return a_distance < b_distance;
+    });
+    constexpr size_t max_visible_clusters = 5;
+    if (centers.size() > max_visible_clusters) centers.resize(max_visible_clusters);
+
+    const auto stamp = this->now();
+    for (size_t i = 0; i < centers.size(); ++i) {
+      visualization_msgs::msg::Marker marker;
+      marker.header.frame_id = map_frame_;
+      marker.header.stamp = stamp;
+      marker.ns = robot_id_ + "_near_clusters";
+      marker.id = static_cast<int>(i);
+      marker.type = visualization_msgs::msg::Marker::SPHERE;
+      marker.action = visualization_msgs::msg::Marker::ADD;
+      marker.pose.orientation.w = 1.0;
+      const auto [x, y] = gridToWorld(centers[i].x, centers[i].y);
+      marker.pose.position.x = x;
+      marker.pose.position.y = y;
+      marker.pose.position.z = 0.10;
+      marker.scale.x = 0.18;
+      marker.scale.y = 0.18;
+      marker.scale.z = 0.06;
+      if (robot_id_ == "tb3_0") {
+        marker.color.r = 1.00f; marker.color.g = 0.68f; marker.color.b = 0.78f;
+      } else if (robot_id_ == "tb3_1") {
+        marker.color.r = 0.72f; marker.color.g = 0.92f; marker.color.b = 0.58f;
+      } else {
+        marker.color.r = 1.00f; marker.color.g = 0.88f; marker.color.b = 0.52f;
+      }
+      marker.color.a = 0.95f;
+      marker_array.markers.push_back(marker);
+    }
+    cluster_marker_pub_->publish(marker_array);
+  }
+
+  void FrontierExplorerMulti::publishSelectedGoalMarker(const GridPose& goal) {
+    if (!enable_viz_ || !has_map_ || !cluster_marker_pub_) return;
+    visualization_msgs::msg::MarkerArray marker_array;
+    visualization_msgs::msg::Marker marker;
+    marker.header.frame_id = map_frame_;
+    marker.header.stamp = this->now();
+    marker.ns = robot_id_ + "_selected_goal";
+    marker.id = 0;
+    marker.type = visualization_msgs::msg::Marker::SPHERE;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+    marker.pose.orientation.w = 1.0;
+    const auto [x, y] = gridToWorld(goal.x, goal.y);
+    marker.pose.position.x = x;
+    marker.pose.position.y = y;
+    marker.pose.position.z = 0.12;
+    marker.scale.x = 0.30;
+    marker.scale.y = 0.30;
+    marker.scale.z = 0.08;
+    marker.color.r = 1.00f;
+    marker.color.g = 0.36f;
+    marker.color.b = 0.40f;
+    marker.color.a = 1.00f;
+    marker_array.markers.push_back(marker);
     cluster_marker_pub_->publish(marker_array);
   }
 
@@ -1725,6 +1939,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     last_rendezvous_anchor_time_ = now;
     has_rendezvous_anchor_ = true;
     if (was_stale || moved > 0.5) {
+      rendezvous_arrived_ = false;
       rendezvous_replan_requested_ = true;
       RCLCPP_INFO(
           get_logger(), "[%s] rendezvous anchor active in %s: (%.2f, %.2f)",
@@ -1766,26 +1981,37 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
 
   }
 
-  void FrontierExplorerMulti::addToBlacklist(const GridPose& g) {
+  void FrontierExplorerMulti::addToBlacklist(
+      const GridPose& g, double ttl_s, double radius_m) {
     auto now = this->now();
+    const double entry_ttl = ttl_s > 0.0 ? ttl_s : blacklist_ttl_s_;
+    const double entry_radius = radius_m > 0.0 ? radius_m : blacklist_radius_m_;
 
     blacklisted_goals_.erase(
         std::remove_if(blacklisted_goals_.begin(), blacklisted_goals_.end(),
             [&](const BlacklistedGoal& b) {
-                return (now - b.stamp).seconds() > blacklist_ttl_s_;
+                const double age = (now - b.stamp).seconds();
+                const double distance = std::hypot(
+                    (g.x - b.g.x) * map_.info.resolution,
+                    (g.y - b.g.y) * map_.info.resolution);
+                // Gazebo reset처럼 ROS 시간이 뒤로 가면 과거 blacklist를
+                // 유지하지 않는다. 같은 영역의 중복 항목도 하나로 갱신한다.
+                return age < -0.1 || age > b.ttl_s ||
+                    distance < std::max(entry_radius, b.radius_m);
             }),
         blacklisted_goals_.end());
 
-    blacklisted_goals_.push_back({g, now});
+    blacklisted_goals_.push_back({g, now, entry_ttl, entry_radius});
   }
 
   bool FrontierExplorerMulti::isBlacklisted(const GridPose& g) const {
       auto now = this->now();
       for (const auto& b : blacklisted_goals_) {
-          if ((now - b.stamp).seconds() > blacklist_ttl_s_) continue;
+          const double age = (now - b.stamp).seconds();
+          if (age < -0.1 || age > b.ttl_s) continue;
           double d = std::hypot((g.x - b.g.x) * map_.info.resolution,
                                 (g.y - b.g.y) * map_.info.resolution);
-          if (d < blacklist_radius_m_) return true;
+          if (d < b.radius_m) return true;
       }
       return false;
   }
@@ -1821,11 +2047,36 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     auto obsRaw     = buildObstacleRawMask();
     applyOtherRobotFootprints(obsInfl);
     clearance_cost_map_ = buildClearanceCostMap(obsRaw);
-    const bool rendezvous_active = has_rendezvous_anchor_ &&
+    const bool rendezvous_command_active = has_rendezvous_anchor_ &&
         (this->now() - last_rendezvous_anchor_time_).seconds() <=
             rendezvous_command_ttl_s_ &&
         (rendezvous_anchor_.header.frame_id.empty() ||
             rendezvous_anchor_.header.frame_id == map_frame_);
+    const bool rendezvous_active = rendezvous_command_active && !rendezvous_arrived_;
+
+    // DWB의 FollowPath 성공은 현재 proxy goal 도착일 뿐이다. 랑데부의
+    // 최종 도착은 실제 UWB anchor와의 거리로 별도 판정한다.
+    if (rendezvous_command_active && !rendezvous_arrived_) {
+        const double anchor_distance = std::hypot(
+            rendezvous_anchor_.pose.position.x - robot_.x,
+            rendezvous_anchor_.pose.position.y - robot_.y);
+        if (anchor_distance <= rendezvous_arrival_radius_m_) {
+            rendezvous_arrived_ = true;
+            following_rendezvous_ = false;
+            RCLCPP_INFO(
+                get_logger(),
+                "[%s] rendezvous anchor reached by distance (%.3f m)",
+                robot_id_.c_str(), anchor_distance);
+        }
+    }
+
+    if (rendezvous_command_active && rendezvous_arrived_) {
+        if (!path_.empty() || path_sent_to_dwb_ || follow_path_goal_handle_) {
+            clearPathAndCancel();
+        }
+        publishStop("rendezvous reached");
+        return;
+    }
 
     if (following_rendezvous_ && !rendezvous_active) {
         clearPathAndCancel();
@@ -1851,11 +2102,19 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
         else {
             const bool path_blocked = isCurrentPathBlocked(obsInfl);
             const bool stuck = isRobotStuck();
+            const bool ig_replan = !rendezvous_active && shouldReplanByIG();
+            const bool other_robot_on_path = hasOtherRobotOnCurrentPath();
             bool need_replan = rendezvous_replan_requested_ || path_blocked ||
-                (!rendezvous_active && shouldReplanByIG()) ||
-                hasOtherRobotOnCurrentPath() || stuck;
+                ig_replan || other_robot_on_path || stuck;
 
             if (need_replan) {
+                RCLCPP_WARN(
+                    get_logger(),
+                    "[%s] REPLAN reason: rendezvous=%d blocked=%d ig=%d "
+                    "other_robot=%d stuck=%d map=%s path_points=%zu",
+                    robot_id_.c_str(), rendezvous_replan_requested_, path_blocked,
+                    ig_replan, other_robot_on_path, stuck,
+                    using_local_map_ ? "LOCAL" : "MERGE", path_.size());
                 if (stuck) addToBlacklist(current_goal_);
                 if (path_blocked) {
                     RCLCPP_WARN_THROTTLE(
@@ -1967,8 +2226,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
 
     const int clearance_cells = (int)std::ceil(
         frontier_clearance_m_ / map_.info.resolution);
-    // Unknown은 통과 가능하게 유지하되 최종 A*와 동일한 장애물 mask로
-    // reachable을 계산해 두 단계의 판정을 일치시킨다.
+    // Unknown과 장애물을 차단한 최종 A* mask로 reachable을 계산한다.
     auto reachMask = obsInfl;
     applyKeepOpen(reachMask, robot_g);
     const auto reachable = buildReachableMaskFromStart(robot_g, reachMask);
@@ -2001,8 +2259,14 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
         }
 
         auto rendezvous_path = astar(robot_g, rendezvous_goal, reachMask);
+        const auto [rendezvous_goal_x, rendezvous_goal_y] = gridToWorld(
+            rendezvous_goal.x, rendezvous_goal.y);
+        const double rendezvous_goal_distance = std::hypot(
+            rendezvous_goal_x - robot_.x,
+            rendezvous_goal_y - robot_.y);
         if (!rendezvous_path.empty() &&
-            (rendezvous_goal.x != robot_g.x || rendezvous_goal.y != robot_g.y)) {
+            (rendezvous_goal.x != robot_g.x || rendezvous_goal.y != robot_g.y) &&
+            rendezvous_goal_distance >= rendezvous_direct_min_distance_m_) {
             path_ = std::move(rendezvous_path);
             wp_idx_ = 0;
             progress_inited_ = false;
@@ -2015,12 +2279,10 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
                 static_cast<int>(std::ceil(info_gain_radius_m_ / map_.info.resolution)));
             blacklisted_goals_.clear();
 
-            const auto [goal_x, goal_y] = gridToWorld(
-                rendezvous_goal.x, rendezvous_goal.y);
             RCLCPP_INFO(
                 get_logger(),
                 "[%s] direct rendezvous plan: goal=(%.2f, %.2f), anchor=(%.2f, %.2f)",
-                robot_id_.c_str(), goal_x, goal_y,
+                robot_id_.c_str(), rendezvous_goal_x, rendezvous_goal_y,
                 rendezvous_anchor_.pose.position.x,
                 rendezvous_anchor_.pose.position.y);
             if (enable_viz_) publishPathMarker(path_);
@@ -2028,8 +2290,12 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
             return;
         }
 
-        publishStop("already at closest reachable rendezvous point");
-        return;
+        // DWB tolerance 근처의 같은 proxy goal을 반복 전송하지 않는다.
+        // 일반 frontier 선택으로 내려가 anchor 방향의 지도를 더 확장한다.
+        RCLCPP_INFO_THROTTLE(
+            get_logger(), *get_clock(), 2000,
+            "[%s] rendezvous proxy only %.3f m away; expanding frontier toward anchor",
+            robot_id_.c_str(), rendezvous_goal_distance);
     }
 
     // 가까운 유효 frontier를 우선 사용한다. 가까운 후보가 모두 장애물
@@ -2114,8 +2380,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     }
 
     if (enable_viz_) {
-        publishClusterRings(frontiers, labels, reps);
-        publishFrontierMarkers(reps);
+        publishClusterMarkers(frontiers, labels);
     }
 
     GridPose goal;
@@ -2156,8 +2421,10 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
       publishReservationGlobal(goal);
     }
 
-    if (enable_viz_)
+    if (enable_viz_) {
+        publishSelectedGoalMarker(goal);
         publishPathMarker(path_);
+    }
 
     followPathStep();
 }
