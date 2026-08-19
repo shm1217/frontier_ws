@@ -57,13 +57,13 @@ class MergeMapUwb(Node):
         self.tag_offset = float(
             self.declare_parameter("tag_offset_from_base_m", 0.15).value
         )
-        self.min_samples = int(self.declare_parameter("min_range_samples", 20).value)
+        self.min_samples = int(self.declare_parameter("min_range_samples", 10).value)
         self.max_samples = int(self.declare_parameter("max_range_samples", 1000).value)
         self.min_motion = float(
             self.declare_parameter("min_sample_motion_m", 0.1).value
         )
         self.max_anchor_rmse = float(
-            self.declare_parameter("max_anchor_rmse_m", 0.5).value ## 0.35
+            self.declare_parameter("max_anchor_rmse_m", 1.0).value ## 0.35
         )  
         self.max_anchor_match = float(
             self.declare_parameter("max_anchor_match_error_m", 0.6).value
