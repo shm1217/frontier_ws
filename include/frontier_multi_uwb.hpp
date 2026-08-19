@@ -265,12 +265,15 @@ private:
     double alpha_ = 1.0, beta_ = 1.0, delta_ = 1.0;
     std::string rendezvous_anchor_topic_ = "rendezvous_anchor";
     double rendezvous_command_ttl_s_ = 3.0;
+    double rendezvous_arrival_radius_m_ = 2.0;
+    double rendezvous_direct_min_distance_m_ = 0.6;
     double rendezvous_utility_weight_ = 4.0;
     geometry_msgs::msg::PoseStamped rendezvous_anchor_;
     rclcpp::Time last_rendezvous_anchor_time_{0, 0, RCL_ROS_TIME};
     bool has_rendezvous_anchor_ = false;
     bool rendezvous_replan_requested_ = false;
     bool following_rendezvous_ = false;
+    bool rendezvous_arrived_ = false;
 
     double reserve_exclusion_radius_m_ = 1.5;
     double reserve_ttl_s_ = 5.0;

@@ -69,6 +69,10 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
         "rendezvous_anchor_topic", "rendezvous_anchor");
     rendezvous_command_ttl_s_ = this->declare_parameter<double>(
         "rendezvous_command_ttl_s", 3.0);
+    rendezvous_arrival_radius_m_ = this->declare_parameter<double>(
+        "rendezvous_arrival_radius_m", 2.0);
+    rendezvous_direct_min_distance_m_ = this->declare_parameter<double>(
+        "rendezvous_direct_min_distance_m", 0.6);
     rendezvous_utility_weight_ = this->declare_parameter<double>(
         "rendezvous_utility_weight", 4.0);
 
@@ -1312,7 +1316,23 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
 
     const auto path_id = ++active_path_id_;
     FollowPath::Goal goal;
-    goal.path = makeNavPath();
+    auto nav_path = makeNavPath();
+    RCLCPP_WARN(
+        get_logger(),
+        "[%s] SEND PATH frame=%s size=%zu first=(%.2f, %.2f) last=(%.2f, %.2f)",
+        robot_id_.c_str(),
+        nav_path.header.frame_id.c_str(),
+        nav_path.poses.size(),
+        nav_path.poses.front().pose.position.x,
+        nav_path.poses.front().pose.position.y,
+        nav_path.poses.back().pose.position.x,
+        nav_path.poses.back().pose.position.y);
+    RCLCPP_WARN(
+        get_logger(),
+        "[%s] ROBOT pose=(%.2f, %.2f)",
+        robot_id_.c_str(), robot_.x, robot_.y);
+
+    goal.path = std::move(nav_path);
     goal.controller_id = "FollowPath";
     goal.goal_checker_id = "general_goal_checker";
     auto options = rclcpp_action::Client<FollowPath>::SendGoalOptions();
@@ -1335,6 +1355,24 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
         // 도착한 gate goal을 다음 timer에서 다시 계획하지 않는다.
         has_gate_goal_ = false;
         new_gate_goal_ = false;
+        if (following_rendezvous_ && has_rendezvous_anchor_) {
+          const double anchor_distance = std::hypot(
+              rendezvous_anchor_.pose.position.x - robot_.x,
+              rendezvous_anchor_.pose.position.y - robot_.y);
+          if (anchor_distance <= rendezvous_arrival_radius_m_) {
+            rendezvous_arrived_ = true;
+            following_rendezvous_ = false;
+            RCLCPP_INFO(
+                get_logger(),
+                "[%s] rendezvous anchor reached after FollowPath success (%.3f m)",
+                robot_id_.c_str(), anchor_distance);
+          } else {
+            RCLCPP_INFO(
+                get_logger(),
+                "[%s] intermediate rendezvous path reached; anchor still %.3f m away",
+                robot_id_.c_str(), anchor_distance);
+          }
+        }
       }
       if (result.code != rclcpp_action::ResultCode::SUCCEEDED) {
         RCLCPP_WARN(get_logger(), "[%s] DWB FollowPath ended with code %d",
@@ -1725,6 +1763,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     last_rendezvous_anchor_time_ = now;
     has_rendezvous_anchor_ = true;
     if (was_stale || moved > 0.5) {
+      rendezvous_arrived_ = false;
       rendezvous_replan_requested_ = true;
       RCLCPP_INFO(
           get_logger(), "[%s] rendezvous anchor active in %s: (%.2f, %.2f)",
@@ -1821,11 +1860,38 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     auto obsRaw     = buildObstacleRawMask();
     applyOtherRobotFootprints(obsInfl);
     clearance_cost_map_ = buildClearanceCostMap(obsRaw);
-    const bool rendezvous_active = using_local_map_ && has_rendezvous_anchor_ &&
+    const bool rendezvous_command_active = using_local_map_ && has_rendezvous_anchor_ &&
         (this->now() - last_rendezvous_anchor_time_).seconds() <=
             rendezvous_command_ttl_s_ &&
         (rendezvous_anchor_.header.frame_id.empty() ||
             rendezvous_anchor_.header.frame_id == map_frame_);
+    const bool rendezvous_active = rendezvous_command_active && !rendezvous_arrived_;
+
+    // current_goal_은 아직 알려지지 않은 anchor 방향의 중간 reachable
+    // cell일 수 있다. 따라서 최종 도착은 중간 goal이 아니라 실제
+    // rendezvous_anchor_와의 거리로만 판정한다.
+    if (rendezvous_command_active && !rendezvous_arrived_) {
+        const double anchor_distance = std::hypot(
+            rendezvous_anchor_.pose.position.x - robot_.x,
+            rendezvous_anchor_.pose.position.y - robot_.y);
+        if (anchor_distance <= rendezvous_arrival_radius_m_) {
+            rendezvous_arrived_ = true;
+            following_rendezvous_ = false;
+            RCLCPP_INFO(
+                get_logger(),
+                "[%s] rendezvous anchor reached by distance (%.3f m)",
+                robot_id_.c_str(), anchor_distance);
+        }
+    }
+
+    // 실제 anchor에 도착했고 현재 명령이 유효한 동안만 정지한다.
+    if (rendezvous_command_active && rendezvous_arrived_) {
+        if (!path_.empty() || path_sent_to_dwb_ || follow_path_goal_handle_) {
+            clearPathAndCancel();
+        }
+        publishStop("rendezvous reached");
+        return;
+    }
 
     if (following_rendezvous_ && !rendezvous_active) {
         clearPathAndCancel();
@@ -2001,8 +2067,14 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
         }
 
         auto rendezvous_path = astar(robot_g, rendezvous_goal, reachMask);
+        const auto [rendezvous_goal_x, rendezvous_goal_y] = gridToWorld(
+            rendezvous_goal.x, rendezvous_goal.y);
+        const double rendezvous_goal_distance = std::hypot(
+            rendezvous_goal_x - robot_.x,
+            rendezvous_goal_y - robot_.y);
         if (!rendezvous_path.empty() &&
-            (rendezvous_goal.x != robot_g.x || rendezvous_goal.y != robot_g.y)) {
+            (rendezvous_goal.x != robot_g.x || rendezvous_goal.y != robot_g.y) &&
+            rendezvous_goal_distance >= rendezvous_direct_min_distance_m_) {
             path_ = std::move(rendezvous_path);
             wp_idx_ = 0;
             progress_inited_ = false;
@@ -2015,12 +2087,10 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
                 static_cast<int>(std::ceil(info_gain_radius_m_ / map_.info.resolution)));
             blacklisted_goals_.clear();
 
-            const auto [goal_x, goal_y] = gridToWorld(
-                rendezvous_goal.x, rendezvous_goal.y);
             RCLCPP_INFO(
                 get_logger(),
                 "[%s] direct rendezvous plan: goal=(%.2f, %.2f), anchor=(%.2f, %.2f)",
-                robot_id_.c_str(), goal_x, goal_y,
+                robot_id_.c_str(), rendezvous_goal_x, rendezvous_goal_y,
                 rendezvous_anchor_.pose.position.x,
                 rendezvous_anchor_.pose.position.y);
             if (enable_viz_) publishPathMarker(path_);
@@ -2028,8 +2098,15 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
             return;
         }
 
-        publishStop("already at closest reachable rendezvous point");
-        return;
+        // 가장 가까운 reachable cell이 이미 DWB goal tolerance 근처면
+        // 같은 짧은 FollowPath가 즉시 성공하며 반복된다. 이 경우
+        // 아래의 일반 frontier 선택으로 넘어가 anchor 방향의 지도를
+        // 더 탐색한다. pickBestFrontierByUtility()의 rendezvous 가중치가
+        // 여전히 anchor 방향 frontier를 우선한다.
+        RCLCPP_INFO_THROTTLE(
+            get_logger(), *get_clock(), 2000,
+            "[%s] rendezvous proxy only %.3f m away; expanding frontier toward anchor",
+            robot_id_.c_str(), rendezvous_goal_distance);
     }
 
     // 가까운 유효 frontier를 우선 사용한다. 가까운 후보가 모두 장애물

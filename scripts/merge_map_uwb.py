@@ -61,7 +61,7 @@ class MergeMapUwb(Node):
             self.declare_parameter("min_sample_motion_m", 0.1).value
         )
         self.max_anchor_rmse = float(
-            self.declare_parameter("max_anchor_rmse_m", 0.5).value ## 0.35
+            self.declare_parameter("max_anchor_rmse_m", 1.0).value ## 0.5
         )  
         self.max_anchor_match = float(
             self.declare_parameter("max_anchor_match_error_m", 0.6).value
@@ -109,10 +109,10 @@ class MergeMapUwb(Node):
             self.declare_parameter("min_pair_baseline_m", 0.50).value
         )
         self.min_overlap_score = float(
-            self.declare_parameter("min_overlap_score", 0.5).value
+            self.declare_parameter("min_overlap_score", 0.2).value ## 0.5
         )
         self.min_overlap_coverage = float(
-            self.declare_parameter("min_overlap_coverage", 0.1).value ## 0.1
+            self.declare_parameter("min_overlap_coverage", 0.02).value ## 0.1
         ) 
         self.wall_tolerance = float(
             self.declare_parameter("wall_tolerance_m", 0.10).value

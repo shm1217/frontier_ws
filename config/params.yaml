@@ -77,6 +77,10 @@ frontier_multi_uwb:
     # 중앙 merger가 명령을 보내는 동안 LOCAL frontier를 앵커 방향으로 편향한다.
     rendezvous_anchor_topic: "rendezvous_anchor"
     rendezvous_command_ttl_s: 3.0
+    # merge_map_uwb.py의 rendezvous_arrival_radius_m 기본값과 동일
+    rendezvous_arrival_radius_m: 2.0
+    # 이보다 가까운 중간 goal은 DWB로 재전송하지 않고 frontier 탐사로 전환
+    rendezvous_direct_min_distance_m: 0.6
     rendezvous_utility_weight: 4.0
     reserve_exclusion_radius_m: 2.0 # 다른 로봇의 예약지점과의 최소 거리 지정
     reserve_ttl_s: 6.0
