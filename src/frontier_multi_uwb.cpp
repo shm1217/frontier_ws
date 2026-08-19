@@ -1432,6 +1432,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
 
     const auto path_id = ++active_path_id_;
     dwb_motion_cmd_seen_ = false;
+    last_dwb_cmd_time_ = this->now();
     FollowPath::Goal goal;
     auto nav_path = makeNavPath();
     RCLCPP_WARN(
