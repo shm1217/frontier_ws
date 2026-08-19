@@ -50,7 +50,7 @@ def launch_setup(context, *args, **kwargs):
         "scan_topic":  f"/{ns}/scan",
 
         "resolution": 0.05,
-        "scan_queue_size": 1,
+        "scan_queue_size": 20,
 
         "max_laser_range": 8.0,
         "min_laser_range": 0.12,
