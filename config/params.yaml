@@ -19,8 +19,8 @@ frontier_multi_uwb:
     # ---------------------------------------------------------
     obstacle_threshold: 60
     free_threshold: 50
-    # A* hard clearance. DWB robot_radius와 동일하게 유지한다.
-    inflation_radius_m: 0.40
+    # A* hard clearance. 실제 로봇 footprint보다 과도하게 키우지 않는다.
+    inflation_radius_m: 0.30
     frontier_search_radius_m: 8.0
     # 가까운 후보가 없으면 반경을 확장하고, 그래도 없으면 전체 맵을 확인한다.
     frontier_extended_search_radius_m: 12.0
@@ -47,14 +47,14 @@ frontier_multi_uwb:
     # Laser Mask
     # ---------------------------------------------------------
     laser_block_ttl: 1.0
-    laser_inflation_radius_m: 0.40
-    laser_obstacle_max_range: 0.70
+    laser_inflation_radius_m: 0.15
+    laser_obstacle_max_range: 0.45
 
     # Dynamic Controller: DWB를 우회하는 동안 적용할 안전 제한
     dynamic_max_linear_speed: 0.08
     dynamic_max_angular_speed: 0.80
-    dynamic_stop_distance: 0.45
-    dynamic_slow_distance: 0.70
+    dynamic_stop_distance: 0.32
+    dynamic_slow_distance: 0.55
     # 시뮬레이션에서 costmap/TF 갱신 순간의 짧은 지연은 허용하되,
     # 오래된 속도 명령은 재사용하지 않는다.
     dwb_cmd_timeout_s: 0.50
@@ -68,7 +68,7 @@ frontier_multi_uwb:
     stuck_grace_s: 8.0
     # 최신 obstacle/laser mask가 전방 경로를 막으면 stuck 전에 재계획한다.
     path_blocked_lookahead_m: 1.5
-    path_blocked_confirm_s: 0.3
+    path_blocked_confirm_s: 1.0
 
     # ---------------------------------------------------------
     # 멀티 로봇 유틸리티 (Weights)
@@ -120,11 +120,11 @@ frontier_multi_uwb:
     gate_goal_min_distance_m: 0.75
     map_delta_period_s: 1.0
     # 한 목표의 stuck가 주변 cluster 전체를 막지 않도록 국소적으로 잠시 제외한다.
-    blacklist_ttl_s: 8.0
-    blacklist_radius_m: 0.60
+    blacklist_ttl_s: 3.0
+    blacklist_radius_m: 0.25
     # DWB ABORTED(code 6)는 같은 접근 불가 cluster를 충분히 오래 제외한다.
-    dwb_failure_blacklist_ttl_s: 30.0
-    dwb_failure_blacklist_radius_m: 1.0
+    dwb_failure_blacklist_ttl_s: 6.0
+    dwb_failure_blacklist_radius_m: 0.35
     gate_plan_fail_max: 3
 
     # ---------------------------------------------------------

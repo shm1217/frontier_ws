@@ -218,7 +218,7 @@ private:
 
     int obstacle_threshold_ = 60;
     int free_threshold_ = 50;
-    double inflation_radius_m_ = 0.4;
+    double inflation_radius_m_ = 0.30;
     double frontier_search_radius_m_ = 8.0;
     double frontier_extended_search_radius_m_ = 12.0;
     bool frontier_full_map_fallback_ = true;
@@ -241,8 +241,8 @@ private:
     std::vector<uint8_t> laser_blocked_;
     std::chrono::steady_clock::time_point last_laser_update_;
     double laser_block_ttl_ = 1.0;
-    double laser_inflation_radius_m_ = 0.40;
-    double laser_obstacle_max_range_ = 0.70;
+    double laser_inflation_radius_m_ = 0.15;
+    double laser_obstacle_max_range_ = 0.45;
 
     std::shared_ptr<Controller> dynamic_controller_;
     geometry_msgs::msg::Twist last_dwb_cmd_;
@@ -258,7 +258,7 @@ private:
     double stuck_grace_s_{8.0};
     bool dwb_motion_cmd_seen_ = false;
     double path_blocked_lookahead_m_ = 1.5;
-    double path_blocked_confirm_s_ = 0.3;
+    double path_blocked_confirm_s_ = 1.0;
     rclcpp::Time path_blocked_since_{0, 0, RCL_ROS_TIME};
     rclcpp::Time last_progress_time_{0, 0, RCL_ROS_TIME};
     double last_progress_x_ = 0.0;    

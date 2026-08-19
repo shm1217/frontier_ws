@@ -26,7 +26,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     obstacle_threshold_ = this->declare_parameter<int>("obstacle_threshold", 60);
     free_threshold_     = this->declare_parameter<int>("free_threshold", 50);
 
-    inflation_radius_m_       = this->declare_parameter<double>("inflation_radius_m", 0.40);
+    inflation_radius_m_       = this->declare_parameter<double>("inflation_radius_m", 0.30);
     frontier_search_radius_m_ = this->declare_parameter<double>("frontier_search_radius_m", 6.0);
     frontier_extended_search_radius_m_ = this->declare_parameter<double>(
         "frontier_extended_search_radius_m", 12.0);
@@ -47,12 +47,12 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     dbscan_min_pts_ = this->declare_parameter<int>("dbscan_min_pts", 10);
  
     laser_block_ttl_ = this->declare_parameter<double>("laser_block_ttl", 1.0);
-    laser_inflation_radius_m_ = this->declare_parameter<double>("laser_inflation_radius_m", 0.40);
-    laser_obstacle_max_range_ = this->declare_parameter<double>("laser_obstacle_max_range", 0.70);
+    laser_inflation_radius_m_ = this->declare_parameter<double>("laser_inflation_radius_m", 0.15);
+    laser_obstacle_max_range_ = this->declare_parameter<double>("laser_obstacle_max_range", 0.45);
     dynamic_max_linear_speed_ = this->declare_parameter<double>("dynamic_max_linear_speed", 0.08);
     dynamic_max_angular_speed_ = this->declare_parameter<double>("dynamic_max_angular_speed", 0.8);
-    dynamic_stop_distance_ = this->declare_parameter<double>("dynamic_stop_distance", 0.45);
-    dynamic_slow_distance_ = this->declare_parameter<double>("dynamic_slow_distance", 0.70);
+    dynamic_stop_distance_ = this->declare_parameter<double>("dynamic_stop_distance", 0.32);
+    dynamic_slow_distance_ = this->declare_parameter<double>("dynamic_slow_distance", 0.55);
     dwb_cmd_timeout_s_ = this->declare_parameter<double>("dwb_cmd_timeout_s", 0.50);
 
     stuck_timeout_s_ = this->declare_parameter<double>("stuck_timeout_s", 8.0);
@@ -61,7 +61,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     path_blocked_lookahead_m_ = this->declare_parameter<double>(
         "path_blocked_lookahead_m", 1.5);
     path_blocked_confirm_s_ = this->declare_parameter<double>(
-        "path_blocked_confirm_s", 0.3);
+        "path_blocked_confirm_s", 1.0);
 
     enable_viz_ = this->declare_parameter<bool>("enable_viz", true);
 
@@ -2100,7 +2100,12 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
             new_gate_goal_ = false;
         }
         else {
-            const bool path_blocked = isCurrentPathBlocked(obsInfl);
+            // A* opens a small area around the robot so its own inflated
+            // footprint cannot invalidate a newly-created path. Apply the
+            // same rule while validating that path during execution.
+            auto path_check_mask = obsInfl;
+            applyKeepOpen(path_check_mask, robot_g);
+            const bool path_blocked = isCurrentPathBlocked(path_check_mask);
             const bool stuck = isRobotStuck();
             const bool ig_replan = !rendezvous_active && shouldReplanByIG();
             const bool other_robot_on_path = hasOtherRobotOnCurrentPath();
