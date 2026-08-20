@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# 시뮬레이션용 탐사 노드
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -62,18 +63,18 @@ def generate_launch_description():
             "resolution": 0.05,
 
             # 레이저 범위
-            "max_laser_range": 8.0,   # TB3 LDS 최대 범위
+            "max_laser_range": 8.0,   
             "min_laser_range": 0.12,
 
-            # TF 안정성 (튐 방지 핵심)
-            "transform_publish_period": 0.02,  # 50Hz
+            # TF 안정성 
+            "transform_publish_period": 0.02,
             "tf_buffer_duration": 30.0,
             "transform_timeout": 0.2,
 
             # 맵 퍼블리시
             "map_update_interval": 1.0,
 
-            # 루프클로저 (실내 환경에서 유용)
+            # 루프클로저
             "do_loop_closing": True,
             "loop_search_maximum_distance": 3.0,
             "loop_match_minimum_chain_size": 10,

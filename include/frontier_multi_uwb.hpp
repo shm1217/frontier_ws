@@ -30,11 +30,6 @@
 #include <string>
 #include <unordered_map>
 
-#include <std_msgs/msg/int64.hpp>
-#include <std_msgs/msg/bool.hpp>
-#include <unordered_set>
-#include <random>
-
 #include "frontier_ws/msg/dynamic_obstacle.hpp"
 #include "controller.hpp"
 
@@ -129,7 +124,6 @@ private:
     void publishRobotPositionGlobal();
     void onRobotPosition(const geometry_msgs::msg::PoseStamped& msg, const std::string& sender_id);
     double reservePenaltyGlobal(double goal_x_g, double goal_y_g);
-    bool hasHigherPriorityReservation(double goal_x_g, double goal_y_g);
 
     bool pickBestFrontierByUtility(
     const GridPose &robot_g,
@@ -163,9 +157,6 @@ private:
                                const std::vector<int>& labels);
     void publishSelectedGoalMarker(const GridPose& goal);
 
-    void publishMapDelta();
-    void onGateGoal(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
-    
     bool shouldReplanByIG();
 
     void onMap(const nav_msgs::msg::OccupancyGrid::SharedPtr msg);
@@ -203,10 +194,10 @@ private:
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
     std::vector<BlacklistedGoal> blacklisted_goals_;
-    double blacklist_ttl_s_{8.0};
-    double blacklist_radius_m_ = 0.60;
-    double dwb_failure_blacklist_ttl_s_{30.0};
-    double dwb_failure_blacklist_radius_m_{1.0};
+    double blacklist_ttl_s_{3.0};
+    double blacklist_radius_m_ = 0.25;
+    double dwb_failure_blacklist_ttl_s_{6.0};
+    double dwb_failure_blacklist_radius_m_{0.35};
     std::string clear_costmap_service_ = "local_costmap/clear_entirely_local_costmap";
     double dwb_recovery_match_radius_m_ = 0.50;
     bool costmap_clear_in_progress_ = false;
@@ -232,8 +223,6 @@ private:
     double frontier_extended_search_radius_m_ = 12.0;
     bool frontier_full_map_fallback_ = true;
 
-    double avoid_enter_dist_ = 0.3;
-
     double frontier_clearance_m_ = 0.4;
     double path_clearance_m_ = 0.55;
     int path_clearance_cost_weight_ = 25;
@@ -241,8 +230,8 @@ private:
 
     int keep_open_cells_ = 2;
 
-    double dbscan_eps_m_ = 0.3;
-    int dbscan_min_pts_ = 5;
+    double dbscan_eps_m_ = 0.25;
+    int dbscan_min_pts_ = 10;
     bool use_dbscan_ = true;          
 
     sensor_msgs::msg::LaserScan last_scan_;
@@ -250,19 +239,19 @@ private:
     std::vector<uint8_t> laser_blocked_;
     std::chrono::steady_clock::time_point last_laser_update_;
     double laser_block_ttl_ = 1.0;
-    double laser_inflation_radius_m_ = 0.15;
+    double laser_inflation_radius_m_ = 0.25;
     double laser_obstacle_max_range_ = 0.45;
 
     std::shared_ptr<Controller> dynamic_controller_;
     geometry_msgs::msg::Twist last_dwb_cmd_;
     rclcpp::Time last_dwb_cmd_time_{0, 0, RCL_ROS_TIME};
-    double dwb_cmd_timeout_s_ = 0.50;
+    double dwb_cmd_timeout_s_ = 1.0;
     double dynamic_max_linear_speed_ = 0.08;
     double dynamic_max_angular_speed_ = 0.8;
     double dynamic_stop_distance_ = 0.32;
     double dynamic_slow_distance_ = 0.55;
 
-    double stuck_timeout_s_{5.0};
+    double stuck_timeout_s_{8.0};
     double stuck_min_move_m_{0.02};
     double stuck_grace_s_{8.0};
     bool dwb_motion_cmd_seen_ = false;
@@ -284,7 +273,7 @@ private:
     int wp_idx_ = 0;                 
 
     double info_gain_radius_m_ = 1.5;
-    double alpha_ = 1.0, beta_ = 1.0, delta_ = 1.0;
+    double alpha_ = 10.0, beta_ = 2.0, delta_ = 15.0;
     std::string rendezvous_anchor_topic_ = "rendezvous_anchor";
     double rendezvous_command_ttl_s_ = 3.0;
     double rendezvous_arrival_radius_m_ = 2.0;
@@ -297,8 +286,8 @@ private:
     bool following_rendezvous_ = false;
     bool rendezvous_arrived_ = false;
 
-    double reserve_exclusion_radius_m_ = 1.5;
-    double reserve_ttl_s_ = 5.0;
+    double reserve_exclusion_radius_m_ = 2.0;
+    double reserve_ttl_s_ = 6.0;
     double reserve_refresh_period_s_ = 1.0;
     rclcpp::Time last_reservation_pub_{0, 0, RCL_ROS_TIME};
 
@@ -327,43 +316,18 @@ private:
     bool has_goal_ = false;          
 
     rclcpp::Time last_replan_check_{0,0,RCL_ROS_TIME};
-    double replan_check_period_s_ = 2.0;  
+    double replan_check_period_s_ = 0.5;
     rclcpp::Time last_plan_attempt_{0,0,RCL_ROS_TIME};
     double plan_retry_period_s_ = 0.75;
 
     rclcpp::Time goal_commit_start_{0,0,RCL_ROS_TIME};
-    double min_commit_time_s_ = 5.0; // 3.0       
+    double min_commit_time_s_ = 10.0;
 
-    double ig_drop_thresh_ = 0.05; // 0.5
+    double ig_drop_thresh_ = 0.05;
     double goal_initial_ig_ = 0.0;
-    double ig_drop_ratio_ = 0.20; // 0.40
+    double ig_drop_ratio_ = 0.20;
     double ig_drop_baseline_min_ = 0.20;
-    double ig_replan_min_age_s_ = 5.0; // 2.0
-
-    std::string gate_goal_topic_;
-    std::string map_delta_topic_;
-    double gate_timeout_s_{10.0};
-    double gate_goal_switch_distance_m_{0.75};
-    double gate_goal_min_distance_m_{0.75};
-    double map_delta_period_s_{1.0};
-
-    rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_delta_pub_;
-    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr gate_goal_sub_;
-
-    geometry_msgs::msg::PoseStamped gate_goal_;
-    bool has_gate_goal_{false};
-    bool new_gate_goal_{false};
-    rclcpp::Time last_gate_goal_time_{0,0,RCL_ROS_TIME};
-    rclcpp::Time last_delta_pub_time_{0,0,RCL_ROS_TIME};
-
-    std::vector<int8_t> prev_map_data_;
-
-    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr explore_done_sub_;
-    bool exploration_done_{false};
-
-
-    int gate_plan_fail_count_{0};
-    int gate_plan_fail_max_{3};
+    double ig_replan_min_age_s_ = 10.0;
 
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr local_map_sub_;
     nav_msgs::msg::OccupancyGrid merge_map_;
@@ -373,7 +337,7 @@ private:
     rclcpp::Time last_merge_map_time_;
     rclcpp::Time last_local_map_time_;
     std::string local_map_topic_;
-    double merge_map_stale_s_{2.0};
+    double merge_map_stale_s_{5.0};
     bool using_local_map_{false};
 
     void onLocalMap(const nav_msgs::msg::OccupancyGrid::SharedPtr msg);

@@ -1,3 +1,4 @@
+# 시뮬레이션용 로봇 pose 설정
 robots:
   - name: tb3_0
     x: -4.0

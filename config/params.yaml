@@ -1,146 +1,189 @@
 /**:
   ros__parameters:
-    # ---------------------------------------------------------
     # 토픽 및 프레임 설정
-    # ---------------------------------------------------------
+
+    # 로봇 식별자
     robot_id: "robot1"
+    # 병합 지도 토픽
     map_topic: "map"
+    # 최종 속도 명령 토픽
     cmd_topic: "cmd_vel"
+    # DWB 속도 명령 토픽
     dwb_cmd_topic: "cmd_vel_dwb"
+    # 동적 회피 속도 명령 토픽
     dynamic_cmd_topic: "cmd_vel_dynamic"
+    # 경로 추종 액션 이름
+    follow_path_action: "follow_path"
+    # 레이저 스캔 토픽
     scan_topic: "scan"
+    # 활성 지도 프레임
     map_frame: "map"
+    # 로봇 기준 프레임
     base_frame: "base_footprint"
+    # 전역 좌표 프레임
     global_frame: "world"
+    # TF 조회 제한 시간
     tf_timeout_s: 0.1
 
-    # ---------------------------------------------------------
-    # 임계점 및 환경 설정
-    # ---------------------------------------------------------
+    # 지도 및 탐색 설정
+
+    # 장애물 판정 임계값
     obstacle_threshold: 60
+    # 주행 가능 셀 임계값
     free_threshold: 50
-    # A* hard clearance. 실제 로봇 footprint보다 과도하게 키우지 않는다.
+    # 장애물 팽창 반경
     inflation_radius_m: 0.30
+    # 기본 프론티어 탐색 반경
     frontier_search_radius_m: 8.0
-    # 가까운 후보가 없으면 반경을 확장하고, 그래도 없으면 전체 맵을 확인한다.
+    # 확장 프론티어 탐색 반경
     frontier_extended_search_radius_m: 12.0
+    # 전체 지도 대체 탐색 사용 여부
     frontier_full_map_fallback: true
 
-    # ---------------------------------------------------------
-    # 안전성 (Clearance)
-    # ---------------------------------------------------------
+    # 경로 안전 여유 설정
+
+    # 프론티어 장애물 이격 반경
     frontier_clearance_m: 0.40
-    # hard inflation 바깥에서도 DWB inflation 반경까지 벽 근접 비용을 적용한다.
-    # Unknown은 경로에서 차단하고 frontier의 known-free 경계 셀까지만 이동한다.
+    # 경로 장애물 이격 반경
     path_clearance_m: 0.55
+    # 경로 이격 비용 가중치
     path_clearance_cost_weight: 25
+    # 로봇 주변 개방 셀 수
     keep_open_cells: 2
 
-    # ---------------------------------------------------------
-    # 알고리즘 (DBSCAN)
-    # ---------------------------------------------------------
+    # 프론티어 군집화 설정
+
+    # DBSCAN 사용 여부
     use_dbscan: true
+    # DBSCAN 이웃 반경
     dbscan_eps_m: 0.25
+    # DBSCAN 최소 점 개수
     dbscan_min_pts: 10
 
-    # ---------------------------------------------------------
-    # Laser Mask
-    # ---------------------------------------------------------
+    # 레이저 장애물 설정
+
+    # 레이저 차단 정보 유지 시간
     laser_block_ttl: 1.0
-    laser_inflation_radius_m: 0.15
+    # 레이저 장애물 팽창 반경
+    laser_inflation_radius_m: 0.25
+    # 레이저 장애물 최대 반영 거리
     laser_obstacle_max_range: 0.45
 
-    # Dynamic Controller: DWB를 우회하는 동안 적용할 안전 제한
+    # 동적 회피 제어 설정
+
+    # 동적 회피 최대 선속도
     dynamic_max_linear_speed: 0.08
+    # 동적 회피 최대 각속도
     dynamic_max_angular_speed: 0.80
+    # 동적 장애물 정지 거리
     dynamic_stop_distance: 0.32
+    # 동적 장애물 감속 거리
     dynamic_slow_distance: 0.55
-    # 시뮬레이션에서 costmap/TF 갱신 순간의 짧은 지연은 허용하되,
-    # 오래된 속도 명령은 재사용하지 않는다.
+    # DWB 속도 명령 유효 시간
     dwb_cmd_timeout_s: 1.0
 
-    # ---------------------------------------------------------
-    # Stuck 상황 감지
-    # ---------------------------------------------------------
-    # DWB progress checker(8초)가 먼저 판단하도록 frontier의 선제 취소를 막는다.
+    # 주행 정체 감지 설정
+
+    # 주행 정체 판정 시간
     stuck_timeout_s: 8.0
+    # 최소 이동 판정 거리
     stuck_min_move_m: 0.02
+    # 경로 시작 유예 시간
     stuck_grace_s: 8.0
-    # 최신 obstacle/laser mask가 전방 경로를 막으면 stuck 전에 재계획한다.
+    # 경로 차단 검사 거리
     path_blocked_lookahead_m: 1.5
+    # 경로 차단 확정 시간
     path_blocked_confirm_s: 1.0
 
-    # ---------------------------------------------------------
-    # 멀티 로봇 유틸리티 (Weights)
-    # ---------------------------------------------------------
-    info_gain_radius_m: 1.50 # 후보 지점 중 이 반경 내에서 가장 큰 정보 획득량을 가진 지점 선택
+    # 정보 이득 및 랑데부 설정
+
+    # 정보 이득 계산 반경
+    info_gain_radius_m: 1.50
+    # 정보 이득 가중치
     alpha_info_gain: 10.0
+    # 경로 길이 가중치
     beta_path_len: 2.0
+    # 목표 예약 가중치
     delta_reserve: 15.0
-    # 중앙 merger가 명령을 보내는 동안 LOCAL frontier를 앵커 방향으로 편향한다.
+    # 랑데부 앵커 토픽
     rendezvous_anchor_topic: "rendezvous_anchor"
+    # 랑데부 명령 유효 시간
     rendezvous_command_ttl_s: 3.0
-    # 중앙 merger의 rendezvous_arrival_radius_m 기본값과 동일하게 유지한다.
+    # 랑데부 도착 판정 반경
     rendezvous_arrival_radius_m: 2.0
-    # DWB goal tolerance 근처의 짧은 proxy goal은 반복 전송하지 않는다.
+    # 랑데부 직접 이동 최소 거리
     rendezvous_direct_min_distance_m: 0.6
+    # 랑데부 접근 가중치
     rendezvous_utility_weight: 4.0
-    reserve_exclusion_radius_m: 2.0 # 다른 로봇의 예약지점과의 최소 거리 지정
+
+    # 다중 로봇 예약 설정
+
+    # 목표 예약 제외 반경
+    reserve_exclusion_radius_m: 2.0
+    # 목표 예약 유지 시간
     reserve_ttl_s: 6.0
+    # 목표 예약 갱신 주기
     reserve_refresh_period_s: 1.0
+    # 목표 예약 공유 토픽
     reserve_out_topic: "/global_goal_reservation"
-    # 상대 로봇의 실제 위치를 전역 경로의 임시 장애물로 반영
+    # 로봇 위치 공유 토픽
     robot_position_topic: "/global_robot_positions"
+    # 로봇 위치 발행 주기
     robot_position_period_s: 0.2
+    # 로봇 위치 유효 시간
     robot_position_ttl_s: 1.0
+    # 다른 로봇 점유 반경
     other_robot_radius_m: 0.40
-    # 전체 경로가 아니라 로봇 앞쪽 구간에서만 충돌 재계획을 수행한다.
+    # 다른 로봇 경로 검사 거리
     other_robot_path_lookahead_m: 1.5
 
-    # ---------------------------------------------------------
-    # 리플래닝 (Replan)
-    # ---------------------------------------------------------
+    # 재계획 설정
+
+    # 재계획 검사 주기
     replan_check_period_s: 0.5
+    # 경로 생성 재시도 주기
     plan_retry_period_s: 0.75
+    # 최소 목표 유지 시간
     min_commit_time_s: 10.0
+    # 정보 이득 절대 하한
     ig_drop_thresh: 0.05
-    # 목표 선정 후 주변 unknown이 빠르게 줄면, 목적지 도착 전에도 재선정
-    ig_drop_ratio: 0.20 # 너무 자주 목표 바꾸면 좀 낮추기
+    # 정보 이득 감소 비율
+    ig_drop_ratio: 0.20
+    # 정보 이득 기준 최소값
     ig_drop_baseline_min: 0.20
+    # 정보 이득 재계획 최소 경과 시간
     ig_replan_min_age_s: 10.0
-    replan_stop_hold_s: 0.4
 
-    # ---------------------------------------------------------
-    # Gate 관련
-    # ---------------------------------------------------------
-    gate_goal_topic: "goal_assignment"
-    map_delta_topic: "map_delta"
-    gate_timeout_s: 3.0
-    gate_goal_switch_distance_m: 0.75
-    gate_goal_min_distance_m: 0.75
-    map_delta_period_s: 1.0
-    # 한 목표의 stuck가 주변 cluster 전체를 막지 않도록 국소적으로 잠시 제외한다.
+    # 경로 실패 복구 설정
+
+    # 일반 블랙리스트 유지 시간
     blacklist_ttl_s: 3.0
+    # 일반 블랙리스트 반경
     blacklist_radius_m: 0.25
-    # DWB ABORTED(code 6)는 같은 접근 불가 cluster를 충분히 오래 제외한다.
+    # DWB 실패 블랙리스트 유지 시간
     dwb_failure_blacklist_ttl_s: 6.0
+    # DWB 실패 블랙리스트 반경
     dwb_failure_blacklist_radius_m: 0.35
-    # 첫 abort에서는 local costmap clear 후 한 번 재계획하고, 재실패 시 제외한다.
+    # 로컬 비용 지도 초기화 서비스
     clear_costmap_service: "local_costmap/clear_entirely_local_costmap"
+    # DWB 복구 목표 일치 반경
     dwb_recovery_match_radius_m: 0.50
-    gate_plan_fail_max: 3
+    # 로컬 지도 대체 설정
 
-    # ---------------------------------------------------------
-    # 로컬 맵 폴백
-    # ---------------------------------------------------------
+    # 로컬 지도 토픽
     local_map_topic: "map"
+    # 병합 지도 유효 시간
     merge_map_stale_s: 5.0
 
-    # ---------------------------------------------------------
-    # 시각화 (Visualization)
-    # ---------------------------------------------------------
+    # 시각화 설정
+
+    # 시각화 사용 여부
     enable_viz: true
+    # 경로 마커 토픽
     path_marker_topic: "path_marker"
+    # 프론티어 마커 토픽
     frontier_marker_topic: "frontier_markers"
+    # 장애물 팽창 마커 토픽
     infl_marker_topic: "inflation_marker"
+    # 프론티어 군집 마커 토픽
     cluster_marker_topic: "cluster_marker"

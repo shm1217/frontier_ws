@@ -43,12 +43,12 @@ controller_server:
       stateful: true
       critics: [RotateToGoal, Oscillation, BaseObstacle, GoalAlign, PathAlign, PathDist, GoalDist]
       BaseObstacle.scale: 2.0
-      PathAlign.scale: 12.0
+      PathAlign.scale: 6.0 # 기존값: 12.0 
       PathAlign.forward_point_distance: 0.15
-      GoalAlign.scale: 10.0
+      GoalAlign.scale: 5.0 # 기존값: 10.0
       GoalAlign.forward_point_distance: 0.15
-      PathDist.scale: 16.0
-      GoalDist.scale: 12.0
+      PathDist.scale: 16.0 # 기존값: 16.0
+      GoalDist.scale: 12.0 # 기존값: 12.0
       RotateToGoal.scale: 24.0
       RotateToGoal.slowing_factor: 5.0
       RotateToGoal.lookahead_time: -1.0

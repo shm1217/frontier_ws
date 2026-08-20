@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# 시뮬레이션 가제보
 import os
 import re
 import tempfile
@@ -86,14 +87,7 @@ def generate_launch_description():
     "/home/hdzggg/turtlebot3_simulations/install/turtlebot3_gazebo/share/turtlebot3_gazebo/worlds/lobby6.world",
     "/home/hdzggg/turtlebot3_simulations/turtlebot3_gazebo/worlds/lobby6.world",
     ])
-    # default_world = first_existing([
-    #     os.path.join(pkg_tb3, "worlds", "turtlebot3_random2.world"),
-    #     os.path.join(prefix_tb3, "share", "turtlebot3_gazebo", "worlds", "turtlebot3_random2.world"),
-    #     "/home/hdzggg/turtlebot3_simulations/install/turtlebot3_gazebo/share/turtlebot3_gazebo/worlds/turtlebot3_random2.world",
-    #     "/home/hdzggg/turtlebot3_simulations/turtlebot3_gazebo/worlds/turtlebot3_random2.world",
-    #     os.path.join(pkg_tb3, "worlds", "turtlebot3_house.world"),
-    # ])
-
+    
     tb3_model = os.environ.get("TURTLEBOT3_MODEL", "burger")
     sdf_path = os.path.join(pkg_tb3, "models", f"turtlebot3_{tb3_model}", "model.sdf")
 

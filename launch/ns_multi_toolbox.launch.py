@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# 하드웨어용 탐사 노드
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -22,22 +23,6 @@ def launch_setup(context, *args, **kwargs):
     ns = LaunchConfiguration("robot_namespace").perform(context)
 
     actions = []
-    # =========================================================
-    # 1) base -> scan static TF
-    # =========================================================
-    # actions.append(Node(
-    #    package="tf2_ros",
-    #    executable="static_transform_publisher",
-    #    name=f"{ns}_base_to_scan",
-    #    output="screen",
-    #    arguments=[
-    #        "--x", "0.0", "--y", "0.0", "--z", "0.20",
-    #        "--yaw", "0.0", "--pitch", "0.0", "--roll", "0.0",
-    #        "--frame-id", f"{ns}/base_footprint",
-    #        "--child-frame-id", f"{ns}/base_scan",
-    #    ],
-    # ))
-
     # =========================================================
     # SLAM Toolbox
     # =========================================================
