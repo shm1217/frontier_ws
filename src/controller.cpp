@@ -44,6 +44,7 @@ void Controller::pose_update(double x, double y, double yaw)
     has_pose = true;
 }
 
+// 동적 장애물과의 충돌 예측 
 bool Controller::has_collision_risk()
 {
     remove_stale_obstacles();
@@ -87,14 +88,6 @@ geometry_msgs::msg::Twist Controller::control_cmd_update()
         previous_best_sequence.clear();
         return cmd;
     }
-    // else if (goal_dist < 1.0) // 목적지 부근
-    // {
-    //     max_v = 0.1;
-    // }
-    // else
-    // {
-    //     max_v = 0.2;
-    // }
 
     double best_cost = std::numeric_limits<double>::infinity();
     std::vector<ControlInput> best_sequence(robot_N);
@@ -151,12 +144,12 @@ void Controller::remove_stale_obstacles()
     }
 }
 
+// 제어 입력 후보(선속도, 각속도)들 생성 
 std::vector<std::vector<ControlInput>> Controller::sample_control_sequences() 
 {
     std::vector<std::vector<ControlInput>> sequences;
     sequences.reserve(num_control_sequences + 4);
 
-    // sequences.push_back(std::vector<ControlInput>(robot_N, { 0.0, 0.0 }));         // 정지 시퀀스
     sequences.push_back(std::vector<ControlInput>(robot_N, { robot_v, robot_w })); // 현재 속도 유지 시퀀스
     sequences.push_back(make_goal_tracking_sequence());                            // 목표 방향 추종 시퀀스
 
@@ -304,7 +297,8 @@ std::vector<std::vector<ControlInput>> Controller::sample_control_sequences()
     return sequences;
 }
 
-std::vector<ControlInput> Controller::make_goal_tracking_sequence() // 목표 방향으로 가는 기본 제어 시퀀스
+// 목표 방향으로 가는 제어 입력 후보 생성 
+std::vector<ControlInput> Controller::make_goal_tracking_sequence() 
 {
     std::vector<ControlInput> control_sequence;
     control_sequence.reserve(robot_N);
@@ -330,6 +324,7 @@ std::vector<ControlInput> Controller::make_goal_tracking_sequence() // 목표 �
     return control_sequence;
 }
 
+// 로봇과 동적 장애물의 이동 경로 계산 
 void Controller::predict_trajectories(
     const std::vector<ControlInput> &control_sequence,
     std::vector<Eigen::Vector2d> &robot_traj,
@@ -368,7 +363,8 @@ void Controller::predict_trajectories(
     }
 }
 
-double Controller::evaluate_control_sequence(const std::vector<ControlInput> &control_sequence) // cost 계산
+// 제어 입력 후보들의 cost 계산
+double Controller::evaluate_control_sequence(const std::vector<ControlInput> &control_sequence) 
 {
     std::vector<Eigen::Vector2d> robot_traj;
     std::unordered_map<int, std::vector<Eigen::Vector2d>> obs_traj;
