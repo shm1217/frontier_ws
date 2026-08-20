@@ -29,6 +29,7 @@ from std_msgs.msg import Bool
 from tf2_ros import Buffer, StaticTransformBroadcaster, TransformListener
 
 
+# yaw 각도를 ROS 쿼터니언 성분으로 변환
 def yaw_quaternion(yaw):
     return (0.0, 0.0, math.sin(yaw / 2.0), math.cos(yaw / 2.0))
 
@@ -116,9 +117,6 @@ class MergeMapUwb(Node):
         self.min_overlap_coverage = float(
             self.declare_parameter("min_overlap_coverage", 0.1).value
         )
-        # A high feature score from a small wall fragment is not sufficient to
-        # establish a map transform. Apply this guard to every registration
-        # mode, including feature-supported global candidates.
         self.min_overlap_known_cells = int(
             self.declare_parameter("min_overlap_known_cells", 150).value
         )
@@ -214,9 +212,6 @@ class MergeMapUwb(Node):
         }
         self.anchors = {}
         self.transforms = {}
-        # Successful pair registrations survive later timer cycles.  This lets
-        # robots form the global map through overlaps observed at different
-        # times (for example, 0<->1 first and 1<->2 later).
         self.edge_cache = {}
         self.locked = False
 
@@ -281,6 +276,7 @@ class MergeMapUwb(Node):
         self.timer = self.create_timer(1.0, self.tick)
         self.publish_valid(False)
 
+    # 수동 rendezvous 요청을 모든 로봇에 적용하거나 해제
     def on_manual_rendezvous(self, msg):
         now = self.get_clock().now()
         for ns in self.robots:
@@ -293,20 +289,24 @@ class MergeMapUwb(Node):
         else:
             self.get_logger().info("manual rendezvous cancelled for all robots")
 
+    # 현재 맵 정합의 유효 상태를 Bool 토픽으로 발행
     def publish_valid(self, value):
         msg = Bool()
         msg.data = bool(value)
         self.valid_pub.publish(msg)
 
+    # 로봇별 최신 점유 격자 맵 저장
     def on_map(self, msg, robot):
         self.maps[robot] = msg
 
+    # 쿼터니언에서 yaw 계산
     @staticmethod
     def quaternion_yaw(q):
         return math.atan2(
             2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
         )
 
+    # 로봇 앞뒤 태그의 샘플 저장
     def on_range(self, msg, robot, tag):
         if not math.isfinite(msg.range) or msg.range <= 0.0:
             return
@@ -337,6 +337,7 @@ class MergeMapUwb(Node):
         q.append(sample)
         self.last_sample_pose[robot][tag] = sample
 
+    # 추정된 앵커 위치를 rendezvous 목표로 발행
     def publish_rendezvous_commands(self):
         if not self.rendezvous_enabled:
             return
@@ -392,6 +393,7 @@ class MergeMapUwb(Node):
                 )
             self.rendezvous_active[ns] = True
 
+    # 공통 앵커 위치 추정 
     @staticmethod
     def estimate_anchor(samples):
         data = np.asarray(samples, dtype=np.float64)
@@ -431,6 +433,7 @@ class MergeMapUwb(Node):
         rmse = float(np.sqrt(np.mean(np.minimum(residual**2, 1.0))))
         return anchor, rmse
 
+    # 점유 격자를 특징점 검출에 사용할 흑백 장애물 영상으로 변환
     @staticmethod
     def map_image(msg):
         data = np.asarray(msg.data, dtype=np.int16).reshape(
@@ -442,6 +445,7 @@ class MergeMapUwb(Node):
         occupied = cv2.dilate(occupied, np.ones((3, 3), np.uint8), iterations=1)
         return np.where(occupied > 0, 0, 255).astype(np.uint8)
 
+    # 맵 이미지의 픽셀 좌표를 로컬 맵의 미터 단위 좌표로 변환
     @staticmethod
     def pixel_to_local(msg, xy):
         xy = np.asarray(xy, dtype=np.float64)
@@ -454,6 +458,7 @@ class MergeMapUwb(Node):
         )
         return out
 
+    # 두 맵에서 ORB 특징점 이용해 맵 변환 후보 생성 
     def feature_candidates(self, ref, mov):
         orb = cv2.ORB_create(
             nfeatures=self.max_features,
@@ -561,6 +566,7 @@ class MergeMapUwb(Node):
         stats["yaw_hypotheses"] = len(hypotheses)
         return hypotheses, stats
 
+    # yaw 후보 중 비숫한 값들을 묶어 가장 가능성 높은 yaw 값 찾기 
     def cluster_yaw_votes(self, yaw_votes):
         """Cluster circular yaw votes and return (yaw, normalized support)."""
         if not yaw_votes:
@@ -605,6 +611,7 @@ class MergeMapUwb(Node):
         max_support = max(item[1] for item in hypotheses)
         return [(yaw, support / max_support) for yaw, support in hypotheses]
 
+    # 맵 변환(tx, ty, yaw)을 한 점에 적용해 변환된 좌표 계산 
     @staticmethod
     def transform_point(transform, point):
         tx, ty, yaw = transform
@@ -613,6 +620,7 @@ class MergeMapUwb(Node):
             [c * point[0] - s * point[1] + tx, s * point[0] + c * point[1] + ty]
         )
 
+    # 두개의 변환을 적용 순서에 맞게 하나의 변환으로 합성
     @staticmethod
     def compose_transform(outer, inner):
         """Compose SE(2) transforms: result(point) = outer(inner(point))."""
@@ -627,6 +635,7 @@ class MergeMapUwb(Node):
         )
         return float(tx), float(ty), float(yaw)
 
+    # 주어진 맵 변환의 역변환 계산
     @staticmethod
     def inverse_transform(transform):
         """Invert an SE(2) transform."""
@@ -638,6 +647,7 @@ class MergeMapUwb(Node):
             float(-yaw),
         )
 
+    # 반복적인 맵 겹침 평가에 사용할 기준 맵 데이터와 벽 거리 정보 준비
     def make_overlap_context(self, ref):
         ref_data = np.asarray(ref.data, dtype=np.int16).reshape(
             ref.info.height, ref.info.width
@@ -649,6 +659,7 @@ class MergeMapUwb(Node):
             "wall_tolerance_px": self.wall_tolerance / ref.info.resolution,
         }
 
+    # 변환된 이동 맵과 기준 맵의 벽 일치도(overlap) 및 겹침 범위(coverage) 평가
     def overlap_score(self, ref, mov, transform, context=None):
         if context is None:
             context = self.make_overlap_context(ref)
@@ -687,6 +698,7 @@ class MergeMapUwb(Node):
         coverage = float(known_count / len(xy))
         return score, agree_count, conflict_count, known_count, coverage
 
+    # 두 맵에서 추정한 공통 앵커가 일치하도록 yaw 기반 변환 계산
     @staticmethod
     def anchor_constrained_transform(yaw, anchor_ref, anchor_mov):
         """Return map1->map0 SE(2) whose common-anchor positions coincide."""
@@ -698,6 +710,7 @@ class MergeMapUwb(Node):
         normalized_yaw = math.atan2(math.sin(yaw), math.cos(yaw))
         return tx, ty, normalized_yaw
 
+    # 앵커 일치 조건을 유지하면서 맵 겹침 점수가 높은 yaw 탐색
     def refine_anchor_constrained_candidate(
         self, ref, mov, yaw, anchor_ref, anchor_mov, context
     ):
@@ -725,6 +738,7 @@ class MergeMapUwb(Node):
             center_yaw = best_transform[2]
         return best_transform, best_metrics
 
+    # ORB로 대략 맞춘 맵을 조금씩 이동하고 회전시켜 더 정확하게 겹치도록 조정
     def refine_feature_candidate(
         self, ref, mov, initial, anchor_ref, anchor_mov, context
     ):
@@ -732,6 +746,7 @@ class MergeMapUwb(Node):
         best_transform = initial
         best_metrics = self.overlap_score(ref, mov, best_transform, context)
 
+        # 겹침·커버리지·앵커 오차를 결합해 후보 변환의 품질 계산
         def quality(transform, metrics):
             anchor_error = float(np.linalg.norm(
                 self.transform_point(transform, anchor_mov) - anchor_ref
@@ -768,12 +783,14 @@ class MergeMapUwb(Node):
             best_transform, best_metrics = stage_transform, stage_metrics
         return best_transform, best_metrics
 
+    # 특징점, 맵 겹침 및 앵커 제약을 종합해 두 맵 사이 최적 변환 선택
     def select_transform(self, ref_ns, mov_ns):
         ref, mov = self.maps[ref_ns], self.maps[mov_ns]
         yaw_hypotheses, feature_stats = self.feature_candidates(ref, mov)
         a_ref, a_mov = self.anchors[ref_ns][0], self.anchors[mov_ns][0]
         overlap_context = self.make_overlap_context(ref)
 
+        # 주어진 yaw가 특징 기반 각도 후보들로부터 받는 지지도 계산
         def feature_support_at(yaw):
             if not yaw_hypotheses:
                 return 0.0
@@ -794,6 +811,7 @@ class MergeMapUwb(Node):
                 for feature_yaw in (feature_transform[2],)
             )
 
+        # 변환 평가값을 비교 가능한 후보 정보 딕셔너리로 구성
         def make_item(transform, metrics, support, mode):
             overlap, agree, conflict, known, coverage = metrics
             anchor_error = float(
@@ -818,6 +836,7 @@ class MergeMapUwb(Node):
                 "mode": mode,
             }
 
+        # 후보가 겹침, 커버리지, 특징 및 앵커 기준을 만족하는지 판정
         def is_valid(item):
             strong_feature_match = (
                 feature_stats["ransac_votes"] > 0
@@ -947,6 +966,7 @@ class MergeMapUwb(Node):
         )
         return best
 
+    # 서로 겹치는 로봇 맵들을 연결해 모든 맵의 위치를 기준 맵에 맞춤 
     def build_overlap_transform_graph(self):
         """Register every map pair and keep the best connected edge set.
 
@@ -1016,6 +1036,7 @@ class MergeMapUwb(Node):
 
         parent = {ns: ns for ns in self.robots}
 
+        # 해당 로봇 맵이 속한 연결 그룹의 대표 맵 찾기 
         def find(ns):
             while parent[ns] != ns:
                 parent[ns] = parent[parent[ns]]
@@ -1072,6 +1093,7 @@ class MergeMapUwb(Node):
 
         return transforms
 
+    # 계산된 로봇별 map-to-world 변환 발행
     def broadcast_transforms(self):
         messages = []
         for ns, (tx, ty, yaw) in self.transforms.items():
@@ -1087,6 +1109,7 @@ class MergeMapUwb(Node):
             messages.append(msg)
         self.tf_static.sendTransform(messages)
 
+    # merge map 발행 
     def merge_and_publish(self):
         res = self.output_resolution
         bounds = []
@@ -1150,9 +1173,10 @@ class MergeMapUwb(Node):
         merged.data = out.ravel().tolist()
         self.map_pub.publish(merged)
 
+    # 앵커 추정, 맵 정합 및 병합 실행
     def tick(self):
 
-        # 이미 한 번 registration 성공했으면 기존 transform을 계속 사용해서 map만 갱신
+        # 이미 한 번 정합 성공했으면 기존 transform을 계속 사용해서 map만 갱신
         if self.locked:
             self.publish_rendezvous_commands()
             if any(ns not in self.maps for ns in self.robots):
@@ -1211,8 +1235,6 @@ class MergeMapUwb(Node):
             ):
                 self.anchors[ns] = estimate
 
-        # 병합 로직과 독립적으로, 준비된 로봇부터 자기 local-map의 앵커
-        # 방향으로 유도한다. 숫자 좌표는 달라도 동일한 물리 앵커를 뜻한다.
         self.publish_rendezvous_commands()
 
         if any(ns not in self.maps for ns in self.robots):
