@@ -207,11 +207,11 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
 
     replan_check_period_s_ = this->declare_parameter<double>("replan_check_period_s", 0.5);
     plan_retry_period_s_ = this->declare_parameter<double>("plan_retry_period_s", 0.75);
-    min_commit_time_s_     = this->declare_parameter<double>("min_commit_time_s", 2.0);
-    ig_drop_thresh_        = this->declare_parameter<double>("ig_drop_thresh", 0.10);
-    ig_drop_ratio_         = this->declare_parameter<double>("ig_drop_ratio", 0.40);
+    min_commit_time_s_     = this->declare_parameter<double>("min_commit_time_s", 10.0);
+    ig_drop_thresh_        = this->declare_parameter<double>("ig_drop_thresh", 0.05);
+    ig_drop_ratio_         = this->declare_parameter<double>("ig_drop_ratio", 0.20);
     ig_drop_baseline_min_  = this->declare_parameter<double>("ig_drop_baseline_min", 0.20);
-    ig_replan_min_age_s_   = this->declare_parameter<double>("ig_replan_min_age_s", 2.0);
+    ig_replan_min_age_s_   = this->declare_parameter<double>("ig_replan_min_age_s", 10.0);
 
     timer_ = this->create_wall_timer(std::chrono::milliseconds(50),
       std::bind(&FrontierExplorerMulti::onTimer, this));

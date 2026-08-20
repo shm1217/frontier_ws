@@ -1,0 +1,86 @@
+merge_map_uwb:
+  ros__parameters:
+    # Frames and robot map inputs
+    robot_namespaces: [tb3_0, tb3_1, tb3_2]
+    reference_robot: tb3_0
+    global_frame: world
+    base_frame_suffix: base_footprint
+    front_range_topic_suffix: uwb/front/range
+    back_range_topic_suffix: uwb/back/range
+
+    # UWB anchor estimation
+    tag_offset_from_base_m: 0.15
+    min_range_samples: 10
+    max_range_samples: 50
+    min_sample_motion_m: 0.10
+    max_anchor_rmse_m: 1.0
+    max_anchor_match_error_m: 5.0
+
+    # ORB feature extraction and matching
+    max_features: 2500
+    orb_fast_threshold: 8
+    orb_edge_threshold: 8
+    orb_patch_size: 31
+    min_feature_matches: 12
+    feature_ratio: 0.70
+
+    # RANSAC transform estimation
+    ransac_batches: 100
+    ransac_threshold_m: 0.15
+    min_ransac_inliers: 8
+    min_ransac_inlier_ratio: 0.50
+    min_scale: 0.95
+    max_scale: 1.05
+    yaw_cluster_deg: 5.0
+    max_yaw_hypotheses: 12
+    max_pairwise_matches: 80
+    min_pair_baseline_m: 0.80
+
+    # Common registration acceptance limits
+    min_overlap_score: 0.55
+    min_overlap_coverage: 0.10
+    min_overlap_known_cells: 150
+    wall_tolerance_m: 0.10
+
+    # Feature candidate refinement
+    refine_yaw_deg: 3.0
+    refine_yaw_step_deg: 1.0
+    refine_fine_yaw_step_deg: 0.25
+    feature_refine_xy_m: 0.60
+
+    # Global-search candidates with weak feature support
+    global_min_known_cells: 300
+    global_min_coverage: 0.15
+    global_min_overlap: 0.65
+
+    # Global-search candidates without a RANSAC hypothesis
+    ransacless_min_known_cells: 400
+    ransacless_min_coverage: 0.20
+    ransacless_min_overlap: 0.75
+
+    # Strong feature matches may override a poor UWB anchor comparison
+    strong_feature_min_support: 0.80
+    strong_feature_min_overlap: 0.85
+    strong_feature_min_coverage: 0.50
+    strong_feature_min_known_cells: 1000
+
+    # Candidate scoring
+    feature_weight: 1.0
+    overlap_weight: 1.0
+    coverage_weight: 0.5
+    anchor_weight: 0.02
+
+    # Global yaw search and merged-map output
+    global_yaw_step_deg: 5.0
+    global_yaw_top_k: 5
+    global_yaw_nms_deg: 10.0
+    output_resolution: 0.05
+    map_padding_m: 1.0
+
+    # Rendezvous behavior
+    rendezvous_enabled: true
+    rendezvous_auto_enabled: false
+    rendezvous_trigger_timeout_s: 0.0
+    rendezvous_trigger_distance_m: 0.0
+    rendezvous_arrival_radius_m: 2.0
+    rendezvous_manual_topic: /rendezvous_now

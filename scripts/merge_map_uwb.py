@@ -58,7 +58,7 @@ class MergeMapUwb(Node):
             self.declare_parameter("tag_offset_from_base_m", 0.15).value
         )
         self.min_samples = int(self.declare_parameter("min_range_samples", 10).value)
-        self.max_samples = int(self.declare_parameter("max_range_samples", 1000).value)
+        self.max_samples = int(self.declare_parameter("max_range_samples", 50).value)
         self.min_motion = float(
             self.declare_parameter("min_sample_motion_m", 0.1).value
         )
@@ -66,10 +66,10 @@ class MergeMapUwb(Node):
             self.declare_parameter("max_anchor_rmse_m", 1.0).value ## 0.35
         )  
         self.max_anchor_match = float(
-            self.declare_parameter("max_anchor_match_error_m", 0.6).value
+            self.declare_parameter("max_anchor_match_error_m", 5.0).value
         )
         self.min_feature_matches = int(
-            self.declare_parameter("min_feature_matches", 8).value
+            self.declare_parameter("min_feature_matches", 12).value
         )  
         self.max_features = int(self.declare_parameter("max_features", 2500).value)
         self.orb_fast_threshold = int(
@@ -82,19 +82,19 @@ class MergeMapUwb(Node):
             self.declare_parameter("orb_patch_size", 31).value ## 10
         ) 
         self.feature_ratio = float(
-            self.declare_parameter("feature_ratio", 0.78).value
+            self.declare_parameter("feature_ratio", 0.70).value
         ) 
         self.ransac_batches = int(
             self.declare_parameter("ransac_batches", 100).value ## 60
         ) 
         self.ransac_threshold = float(
-            self.declare_parameter("ransac_threshold_m", 0.20).value
+            self.declare_parameter("ransac_threshold_m", 0.15).value
         ) 
         self.min_ransac_inliers = int(
-            self.declare_parameter("min_ransac_inliers", 4).value
+            self.declare_parameter("min_ransac_inliers", 8).value
         ) 
         self.min_ransac_inlier_ratio = float(
-            self.declare_parameter("min_ransac_inlier_ratio", 0.30).value
+            self.declare_parameter("min_ransac_inlier_ratio", 0.50).value
         )  
         self.min_scale = float(self.declare_parameter("min_scale", 0.95).value)
         self.max_scale = float(self.declare_parameter("max_scale", 1.05).value)
@@ -108,10 +108,10 @@ class MergeMapUwb(Node):
             self.declare_parameter("max_pairwise_matches", 80).value
         )
         self.min_pair_baseline = float(
-            self.declare_parameter("min_pair_baseline_m", 0.50).value
+            self.declare_parameter("min_pair_baseline_m", 0.80).value
         )
         self.min_overlap_score = float(
-            self.declare_parameter("min_overlap_score", 0.5).value
+            self.declare_parameter("min_overlap_score", 0.55).value
         )
         self.min_overlap_coverage = float(
             self.declare_parameter("min_overlap_coverage", 0.1).value
@@ -139,17 +139,38 @@ class MergeMapUwb(Node):
             self.declare_parameter("global_min_known_cells", 300).value
         )
         self.global_min_coverage = float(
-            self.declare_parameter("global_min_coverage", 0.30).value
+            self.declare_parameter("global_min_coverage", 0.15).value
         )
         self.global_min_overlap = float(
-            self.declare_parameter("global_min_overlap", 0.60).value
+            self.declare_parameter("global_min_overlap", 0.65).value
+        )
+        self.ransacless_min_known_cells = int(
+            self.declare_parameter("ransacless_min_known_cells", 400).value
+        )
+        self.ransacless_min_coverage = float(
+            self.declare_parameter("ransacless_min_coverage", 0.20).value
+        )
+        self.ransacless_min_overlap = float(
+            self.declare_parameter("ransacless_min_overlap", 0.75).value
+        )
+        self.strong_feature_min_support = float(
+            self.declare_parameter("strong_feature_min_support", 0.80).value
+        )
+        self.strong_feature_min_overlap = float(
+            self.declare_parameter("strong_feature_min_overlap", 0.85).value
+        )
+        self.strong_feature_min_coverage = float(
+            self.declare_parameter("strong_feature_min_coverage", 0.50).value
+        )
+        self.strong_feature_min_known_cells = int(
+            self.declare_parameter("strong_feature_min_known_cells", 1000).value
         )
         self.feature_weight = float(self.declare_parameter("feature_weight", 1.0).value)
         self.overlap_weight = float(self.declare_parameter("overlap_weight", 1.0).value)
         self.coverage_weight = float(
             self.declare_parameter("coverage_weight", 0.5).value
         )
-        self.anchor_weight = float(self.declare_parameter("anchor_weight", 2.0).value)
+        self.anchor_weight = float(self.declare_parameter("anchor_weight", 0.02).value)
         self.global_yaw_step = float(
             self.declare_parameter("global_yaw_step_deg", 5.0).value
         )
@@ -798,14 +819,30 @@ class MergeMapUwb(Node):
             }
 
         def is_valid(item):
+            strong_feature_match = (
+                feature_stats["ransac_votes"] > 0
+                and item["support"] >= self.strong_feature_min_support
+                and item["overlap"] >= self.strong_feature_min_overlap
+                and item["coverage"] >= self.strong_feature_min_coverage
+                and item["known"] >= self.strong_feature_min_known_cells
+            )
             valid = (
                 item["overlap"] >= self.min_overlap_score
                 and item["coverage"] >= self.min_overlap_coverage
                 and item["known"] >= self.min_overlap_known_cells
-                and item["anchor_error"] <= self.max_anchor_match
+                and (
+                    item["anchor_error"] <= self.max_anchor_match
+                    or strong_feature_match
+                )
             )
             if not valid:
                 return False
+            if feature_stats["ransac_votes"] == 0:
+                return (
+                    item["overlap"] >= self.ransacless_min_overlap
+                    and item["coverage"] >= self.ransacless_min_coverage
+                    and item["known"] >= self.ransacless_min_known_cells
+                )
             if item["mode"] == "global" and item["support"] < 0.20:
                 return (
                     item["overlap"] >= self.global_min_overlap

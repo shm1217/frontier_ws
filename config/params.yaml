@@ -1,4 +1,4 @@
-frontier_multi_uwb:
+/**:
   ros__parameters:
     # ---------------------------------------------------------
     # 토픽 및 프레임 설정
@@ -12,7 +12,7 @@ frontier_multi_uwb:
     map_frame: "map"
     base_frame: "base_footprint"
     global_frame: "world"
-    tf_timeout_s: 1.0
+    tf_timeout_s: 0.1
 
     # ---------------------------------------------------------
     # 임계점 및 환경 설정
@@ -57,7 +57,7 @@ frontier_multi_uwb:
     dynamic_slow_distance: 0.55
     # 시뮬레이션에서 costmap/TF 갱신 순간의 짧은 지연은 허용하되,
     # 오래된 속도 명령은 재사용하지 않는다.
-    dwb_cmd_timeout_s: 0.50
+    dwb_cmd_timeout_s: 1.0
 
     # ---------------------------------------------------------
     # Stuck 상황 감지
@@ -102,12 +102,12 @@ frontier_multi_uwb:
     # ---------------------------------------------------------
     replan_check_period_s: 0.5
     plan_retry_period_s: 0.75
-    min_commit_time_s: 8.0
-    ig_drop_thresh: 0.10
+    min_commit_time_s: 10.0
+    ig_drop_thresh: 0.05
     # 목표 선정 후 주변 unknown이 빠르게 줄면, 목적지 도착 전에도 재선정
-    ig_drop_ratio: 0.40 # 너무 자주 목표 바꾸면 좀 낮추기
+    ig_drop_ratio: 0.20 # 너무 자주 목표 바꾸면 좀 낮추기
     ig_drop_baseline_min: 0.20
-    ig_replan_min_age_s: 8.0
+    ig_replan_min_age_s: 10.0
     replan_stop_hold_s: 0.4
 
     # ---------------------------------------------------------

@@ -18,7 +18,9 @@ from launch.substitutions import LaunchConfiguration
 
 
 def generate_launch_description():
-    scripts = os.path.join(get_package_share_directory("frontier_ws"), "scripts")
+    package_share = get_package_share_directory("frontier_ws")
+    scripts = os.path.join(package_share, "scripts")
+    merge_params = os.path.join(package_share, "config", "merge_params.yaml")
     merger = os.path.join(scripts, "merge_map_uwb.py")
     mock_ranger = os.path.join(scripts, "mock_uwb_range_uwb.py")
     robots = LaunchConfiguration("robot_namespaces")
@@ -88,6 +90,7 @@ def generate_launch_description():
         ExecuteProcess(
             cmd=[
                 "python3", merger, "--ros-args",
+                "--params-file", merge_params,
                 "-p", ["use_sim_time:=", LaunchConfiguration("use_sim_time")],
                 "-p", ["robot_namespaces:=", robots],
                 "-p", ["tag_offset_from_base_m:=", LaunchConfiguration("tag_offset_from_base_m")],
