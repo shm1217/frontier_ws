@@ -118,7 +118,7 @@ class MockUwbRangeNode(Node):
         self.world_poses.update(poses)
 
     def on_odom(self, msg, robot):
-        # Never overwrite direct Gazebo ground truth if it becomes available.
+        
         if self.pose_source.get(robot) == "gazebo_model_states":
             return
         origin_x, origin_y, origin_yaw = self.initial_world_pose[robot]
