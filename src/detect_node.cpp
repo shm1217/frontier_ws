@@ -5,6 +5,7 @@ using namespace std::chrono_literals;
 
 namespace
 {
+// 토픽 앞에 로봇 namespace 붙이기
 std::string scoped_topic(const std::string &robot_id, const std::string &topic)
 {
     std::string clean = topic;
@@ -19,6 +20,7 @@ std::string scoped_topic(const std::string &robot_id, const std::string &topic)
     return "/" + robot_id + "/" + clean;
 }
 
+// 프레임 앞에 로봇 namespace 붙이기
 std::string scoped_frame(const std::string &robot_id, const std::string &frame)
 {
     if (robot_id.empty())
@@ -38,7 +40,7 @@ DetectNode::DetectNode() : Node("detect_node"), tf_buffer(this->get_clock()), tf
     embedding_topic_ = this->declare_parameter<std::string>(
         "embedding_topic", scoped_topic(robot_id_, "embedding"));
 
-    // 실물
+    // 실물 하드웨어 사용 시
     image_topic_ = this->declare_parameter<std::string>(
         "image_topic", scoped_topic(robot_id_, "camera/camera/color/image_raw"));
     camera_info_topic_ = this->declare_parameter<std::string>(
@@ -77,7 +79,7 @@ DetectNode::DetectNode() : Node("detect_node"), tf_buffer(this->get_clock()), tf
     sub_emb = this->create_subscription<frontier_ws::msg::EmbArray>(
         embedding_topic_, 1000, std::bind(&DetectNode::emb_callback, this, std::placeholders::_1));
 
-    // 실물 depth camera 사용 시
+    // 실물 하드웨어 사용 시
     sub_img = this->create_subscription<sensor_msgs::msg::Image>(
         image_topic_, rclcpp::SensorDataQoS(), std::bind(&DetectNode::img_callback, this, std::placeholders::_1));
     sub_camera = this->create_subscription<sensor_msgs::msg::CameraInfo>(
@@ -128,6 +130,7 @@ DetectNode::DetectNode() : Node("detect_node"), tf_buffer(this->get_clock()), tf
     represent.push_back({ 1, best2_path, Eigen::VectorXf(), sensor_msgs::msg::Image() });
 }
 
+// 텍스트 파일에 저장된 특징 벡터를 불러오기 
 Eigen::VectorXf DetectNode::loadEmbedding(const std::string &path)
 {
     std::ifstream file(path);
@@ -217,6 +220,7 @@ void DetectNode::img_callback(const sensor_msgs::msg::Image::ConstSharedPtr msg)
     img_ready = true; 
 }
 
+// 임베딩 벡터를 일치하는 프레임의 객체와 연결
 void DetectNode::emb_callback(const frontier_ws::msg::EmbArray::SharedPtr msg)
 {
     if (!rep_ready)
@@ -275,6 +279,7 @@ void DetectNode::emb_callback(const frontier_ws::msg::EmbArray::SharedPtr msg)
     emb_ready = true;
 }
 
+// 장애물 좌표계의 3차원 점을 카메라 영상의 2차원 픽셀 좌표로 투영
 bool DetectNode::project_pixel(const geometry_msgs::msg::Point &meter_pt, Eigen::Vector2d &pixel_pt)
 {
     if (!cam_ready)
@@ -300,6 +305,7 @@ bool DetectNode::project_pixel(const geometry_msgs::msg::Point &meter_pt, Eigen:
     return true;
 }
 
+// bounding box 이미지를 임베딩 추출용으로 publish 
 void DetectNode::pub_bbox_img(int frame_id, std::unordered_map<int, yolo_track> &det_map, std::unordered_map<int, yolo_track> &track_map)
 {
     if (!imgs)
@@ -456,9 +462,10 @@ void DetectNode::pub_bbox_img(int frame_id, std::unordered_map<int, yolo_track> 
     img_pub->publish(boximg);
 }
 
+// png 파일을 ros 이미지 메시지로 변환
 sensor_msgs::msg::Image::SharedPtr DetectNode::pngToRosImage(const std::string &path)
 {
-    cv::Mat img = cv::imread(path, cv::IMREAD_COLOR); // BGR
+    cv::Mat img = cv::imread(path, cv::IMREAD_COLOR); 
 
     if (img.empty())
     {
@@ -478,6 +485,7 @@ sensor_msgs::msg::Image::SharedPtr DetectNode::pngToRosImage(const std::string &
     return msg;
 }
 
+// 현재 감지 객체와 기존 객체 연결
 void DetectNode::tracking(std::vector<yolo_track> &track)
 {
     det_track.clear();
@@ -532,12 +540,11 @@ void DetectNode::tracking(std::vector<yolo_track> &track)
             Matrix6d pred_P = t.obj_P;
             calculate_Kalman(pred_X, pred_P, p, c, false, kalman, s);
 
-            // Mahalanobis dis
             Eigen::Vector3d det_pose, track_pose;
             det_pose << o.curr.x_, o.curr.y_, o.curr.z_;
             track_pose << kalman.x_, kalman.y_, kalman.z_;
             Eigen::Matrix3d S_safe = s + 1e-6 * Eigen::Matrix3d::Identity();
-            double maha_dis = (det_pose - track_pose).dot(S_safe.ldlt().solve(det_pose - track_pose));
+            double maha_dis = (det_pose - track_pose).dot(S_safe.ldlt().solve(det_pose - track_pose)); // Mahalanobis dis
             maha_dis = std::max(0.0, maha_dis);
             double dis_n = 1.0 - std::exp(-0.5 * maha_dis);
 
@@ -755,7 +762,7 @@ void DetectNode::tracking(std::vector<yolo_track> &track)
             ++it;
     }
 
-    // 트래킹 된 애들 KF 적용
+    // kalman filter 적용 
     for (auto &[id, t] : yolo_tracks)
     {
         auto &tr = tracks_[id];
@@ -783,6 +790,7 @@ void DetectNode::tracking(std::vector<yolo_track> &track)
         {
             continue;
         }
+
         // 외형 cost 안 쓸때
         obj res;
         Eigen::Matrix3d s;
@@ -805,6 +813,7 @@ void DetectNode::tracking(std::vector<yolo_track> &track)
     }
 }
 
+// 외형 similarity cost 추가 
 void DetectNode::calculate_cost()
 {
     if (retrack.empty() || retrack.size() < 20)
@@ -818,8 +827,8 @@ void DetectNode::calculate_cost()
     int used_match_count = 0;
 
     // 대표 이미지 track이랑 매칭
-    std::unordered_map<int, std::unordered_map<int, float>> sim_sum; // track_id -> (rep_id -> similarity 누적)
-    std::unordered_map<int, int> count_map;                          // track_id -> count
+    std::unordered_map<int, std::unordered_map<int, float>> sim_sum; 
+    std::unordered_map<int, int> count_map;                         
     if (!match_ready)
     {
         int valid_track_emb = 0;
@@ -864,37 +873,6 @@ void DetectNode::calculate_cost()
             return;
         }
 
-        // for (auto &[track_id, rep_map] : sim_sum)
-        // {
-        //     int best_rep_id = -1;
-        //     float best_avg = -1.0f;
-
-        //     int cnt = count_map[track_id];
-        //     if (cnt == 0)
-        //         continue;
-
-        //     for (auto &[rep_id, sum_sim] : rep_map)
-        //     {
-        //         float avg_sim = sum_sim / cnt;
-
-        //         if (avg_sim > best_avg)
-        //         {
-        //             best_avg = avg_sim;
-        //             best_rep_id = rep_id;
-        //         }
-        //     }
-
-        //     if (best_rep_id != -1)
-        //     {
-        //         track_to_rep[track_id] = best_rep_id;
-
-        //         RCLCPP_INFO(this->get_logger(),
-        //                     "[AVG] track %d -> rep %d (avg sim: %.3f, count: %d)",
-        //                     track_id, best_rep_id, best_avg, cnt);
-        //     }
-        // }
-
-        ///// 일대일 대응 되도록
         std::vector<std::tuple<float, int, int, int>> candidates;
 
         for (auto &[track_id, rep_map] : sim_sum)
@@ -949,7 +927,6 @@ void DetectNode::calculate_cost()
                         "[MATCH 1:1] track %d -> rep %d (avg sim: %.3f, count: %d)",
                         track_id, rep_id, avg_sim, cnt);
         }
-        /////
 
         if (track_to_rep.size() < yolo_tracks.size())
         {
@@ -1216,6 +1193,7 @@ double DetectNode::calculate_iou(const Eigen::Vector3d &s, const Eigen::Vector3d
     return intersection / union_;
 }
 
+// 칼만 필터로 객체 위치와 속도 보정 
 void DetectNode::calculate_Kalman(Vector6d &X, Matrix6d &P, const obj &prev, const obj &curr, bool vis, obj &res, Eigen::Matrix3d &S)
 {
     kalman = false;
@@ -1299,6 +1277,7 @@ void DetectNode::calculate_vel(const obj &prev, const obj &curr, vel &v)
     v.vz_ = vz;
 }
 
+// 객체마다 다른 마커 색상 생성
 std::array<float, 3> DetectNode::get_color(int id)
 {
     float h = (id * 37) % 360; 
@@ -1351,6 +1330,7 @@ std::array<float, 3> DetectNode::get_color(int id)
     return { r + m, g + m, b + m };
 }
 
+// 객체 bounding box 시각화 
 void DetectNode::visualize_box(const obj &obj, const Eigen::Vector3d &box, const std::array<float, 3> &color, int id, const std::string &ns)
 {
     visualization_msgs::msg::Marker marker;
@@ -1401,6 +1381,7 @@ void DetectNode::visualize_box(const obj &obj, const Eigen::Vector3d &box, const
     box_pub->publish(arr);
 }
 
+// 객체 속도 시각화 
 void DetectNode::visualize_vel(const obj &obj, const vel &obj_vels, const std::array<float, 3> &color, const std::string &ns, int trac_id)
 {
     visualization_msgs::msg::Marker marker;
@@ -1441,6 +1422,7 @@ void DetectNode::visualize_vel(const obj &obj, const vel &obj_vels, const std::a
     vel_pub->publish(arr);
 }
 
+// 객체 위치 시각화 
 void DetectNode::visualize_obj(const obj &obj, const std::array<float, 3> &color, const std::string &ns, int trac_id)
 {
     visualization_msgs::msg::Marker marker;
@@ -1468,6 +1450,7 @@ void DetectNode::visualize_obj(const obj &obj, const std::array<float, 3> &color
     obj_pub->publish(arr);
 }
 
+// ROS 2 노드를 초기화하고 DetectNode를 실행한다.
 int main(int argc, const char *argv[])
 {
     rclcpp::init(argc, argv);
