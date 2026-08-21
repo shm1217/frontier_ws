@@ -67,7 +67,7 @@
     # 레이저 장애물 팽창 반경
     laser_inflation_radius_m: 0.25
     # 레이저 장애물 최대 반영 거리
-    laser_obstacle_max_range: 0.45
+    laser_obstacle_max_range: 0.8
 
     # 동적 회피 제어 설정
 

@@ -97,7 +97,6 @@ private:
     std::vector<uint8_t> buildObstacleRawMask() const;
     std::vector<int> buildClearanceCostMap(
         const std::vector<uint8_t>& obsRaw) const;
-    std::vector<uint8_t> buildBlockedMask() const;
     void applyOtherRobotFootprints(std::vector<uint8_t>& mask);
     bool hasOtherRobotOnCurrentPath();
     bool isCurrentPathBlocked(const std::vector<uint8_t>& obstacle_mask);
@@ -112,7 +111,10 @@ private:
         const GridPose& from, const GridPose& to,
         const std::vector<uint8_t>& obstacle_mask, int& cost) const;
     double distMeters(const GridPose& a, const GridPose& b) const;
-    std::vector<int> regionQuery(const std::vector<GridPose>& pts, int idx, double eps_m) const;
+    std::vector<int> regionQuery(
+        const std::vector<GridPose>& pts,
+        const std::vector<int>& frontier_index,
+        int idx, double eps_m) const;
     std::vector<int> dbscanCluster(const std::vector<GridPose>& pts, double eps_m, int min_pts) const;
     std::vector<GridPose> computeClusterRepresentatives(const std::vector<GridPose>& pts,
                                                     const std::vector<int>& labels) const;
@@ -240,7 +242,7 @@ private:
     std::chrono::steady_clock::time_point last_laser_update_;
     double laser_block_ttl_ = 1.0;
     double laser_inflation_radius_m_ = 0.25;
-    double laser_obstacle_max_range_ = 0.45;
+    double laser_obstacle_max_range_ = 3.0;
 
     std::shared_ptr<Controller> dynamic_controller_;
     geometry_msgs::msg::Twist last_dwb_cmd_;

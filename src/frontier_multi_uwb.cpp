@@ -191,7 +191,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     return (0 <= x && x < (int)map_.info.width && 0 <= y && y < (int)map_.info.height);
   }
 
-  // 월드 좌표의 격자 좌표 변환
+  // 미터의 격자 좌표 변환
   GridPose FrontierExplorerMulti::worldToGrid(double wx, double wy) const {
     const auto &info = map_.info;
     int gx = (int)std::floor((wx - info.origin.position.x) / info.resolution);
@@ -199,7 +199,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     return {gx, gy};
   }
 
-  // 격자 좌표의 월드 좌표 변환
+  // 격자 좌표의 미터 변환
   std::pair<double,double> FrontierExplorerMulti::gridToWorld(int gx, int gy) const {
     const auto &info = map_.info;
     double wx = info.origin.position.x + (gx + 0.5) * info.resolution;
@@ -517,70 +517,6 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     return costs;
   }
 
-  // 주행 차단 마스크 생성
-  std::vector<uint8_t> FrontierExplorerMulti::buildBlockedMask() const {
-    int W = (int)map_.info.width;
-    int H = (int)map_.info.height;
-    std::vector<uint8_t> blocked(W*H, 0);
-
-    std::vector<uint8_t> unknown(W*H, 0);
-    std::vector<uint8_t> obs(W*H, 0);
-
-    for (int y=0;y<H;y++){
-      for (int x=0;x<W;x++){
-        int v = map_.data[IDX(x,y,W)];
-        if (v == UNKNOWN) unknown[IDX(x,y,W)] = 1;
-        if (v >= obstacle_threshold_) obs[IDX(x,y,W)] = 1;
-      }
-    }
-
-    int rad = (int)std::ceil(inflation_radius_m_ / map_.info.resolution);
-
-    std::vector<uint8_t> inflated_obs = obs;
-    if (rad > 0) {
-      for (int y=0;y<H;y++){
-        for (int x=0;x<W;x++){
-          if (!obs[IDX(x,y,W)]) continue;
-          for (int dy=-rad; dy<=rad; dy++){
-            for (int dx=-rad; dx<=rad; dx++){
-              int nx = x+dx, ny = y+dy;
-              if (!inBounds(nx,ny)) continue;
-
-              double dist = std::sqrt((double)dx*dx + (double)dy*dy) * map_.info.resolution;
-              if (dist <= inflation_radius_m_) inflated_obs[IDX(nx,ny,W)] = 1;
-            }
-          }
-        }
-      }
-    }
-
-    for (int i=0;i<W*H;i++) blocked[i] = unknown[i] || inflated_obs[i] ? 1 : 0;
-
-    auto now = std::chrono::steady_clock::now();
-    double dt = std::chrono::duration<double>(now - last_laser_update_).count();
-
-    if (!laser_blocked_.empty() && dt < laser_block_ttl_) {
-      GridPose robot_g = worldToGrid(robot_.x, robot_.y);
-      int keep = 2;
-
-      for (int i=0; i<W*H; ++i) {
-        if (!laser_blocked_[i]) continue;
-
-        int x = i % W;
-        int y = i / W;
-
-        if (std::abs(x - robot_g.x) <= keep &&
-            std::abs(y - robot_g.y) <= keep)
-          continue;
-
-        blocked[i] = 1;
-      }
-    }
-
-    return blocked;
-
-  }
-
   // 다른 로봇의 점유 영역 반영
   void FrontierExplorerMulti::applyOtherRobotFootprints(std::vector<uint8_t>& mask) {
     const auto now = this->now();
@@ -815,7 +751,7 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
     return true;
   }
 
-  // 경로 가시선 기반 단순화
+  // 위에서 계산한 경로 위의 불필요한 점 제거
   std::vector<GridPose> FrontierExplorerMulti::simplifyPath(
       const std::vector<GridPose>& path,
       const std::vector<uint8_t>& obstacle_mask) const {
@@ -863,13 +799,41 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
   }
 
   // DBSCAN 기준점의 이웃 검색
-  std::vector<int> FrontierExplorerMulti::regionQuery(const std::vector<GridPose>& pts, int idx, double eps_m) const {
+  std::vector<int> FrontierExplorerMulti::regionQuery(
+      const std::vector<GridPose>& pts,
+      const std::vector<int>& frontier_index,
+      int idx, double eps_m) const {
     std::vector<int> neighbors;
     neighbors.reserve(64);
-    for (int j = 0; j < (int)pts.size(); ++j) {
-      if (j == idx) continue;
-      if (distMeters(pts[idx], pts[j]) <= eps_m) neighbors.push_back(j);
+    const int W = (int)map_.info.width;
+    const int H = (int)map_.info.height;
+    const double resolution = map_.info.resolution;
+    if (idx < 0 || idx >= (int)pts.size() || resolution <= 0.0 || eps_m < 0.0 ||
+        frontier_index.size() != static_cast<size_t>(W * H)) {
+      return neighbors;
     }
+
+    const int search_cells = (int)std::ceil(eps_m / resolution);
+    const double eps_cells = eps_m / resolution;
+    const double eps_cells_squared = eps_cells * eps_cells;
+    const GridPose& center = pts[idx];
+
+    for (int dy = -search_cells; dy <= search_cells; ++dy) {
+      for (int dx = -search_cells; dx <= search_cells; ++dx) {
+        if (dx == 0 && dy == 0) continue;
+        if ((double)dx * dx + (double)dy * dy > eps_cells_squared) continue;
+
+        const int nx = center.x + dx;
+        const int ny = center.y + dy;
+        if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+
+        const int neighbor_index = frontier_index[IDX(nx, ny, W)];
+        if (neighbor_index >= 0) neighbors.push_back(neighbor_index);
+      }
+    }
+    // Preserve the original all-points query order so DBSCAN border points
+    // are assigned to clusters deterministically in the same order as before.
+    std::sort(neighbors.begin(), neighbors.end());
     return neighbors;
   }
 
@@ -877,32 +841,41 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
   std::vector<int> FrontierExplorerMulti::dbscanCluster(const std::vector<GridPose>& pts, double eps_m, int min_pts) const {
     const int N = (int)pts.size();
     std::vector<int> labels(N, -2);
-    int cluster_id = 0;
+    const int W = (int)map_.info.width;
+    const int H = (int)map_.info.height;
+    std::vector<int> frontier_index(W * H, -1);
+    for (int i = 0; i < N; ++i) {
+      if (pts[i].x >= 0 && pts[i].x < W && pts[i].y >= 0 && pts[i].y < H) {
+        frontier_index[IDX(pts[i].x, pts[i].y, W)] = i;
+      }
+    }
+
+    int next_cluster_label = 0;
 
     for (int i = 0; i < N; ++i) {
       if (labels[i] != -2) continue;
-      auto neighbors = regionQuery(pts, i, eps_m);
+      auto neighbors = regionQuery(pts, frontier_index, i, eps_m);
       if ((int)neighbors.size() + 1 < min_pts) { labels[i] = -1; continue; }
 
-      labels[i] = cluster_id;
+      labels[i] = next_cluster_label;
       std::queue<int> q;
       for (int nb : neighbors) q.push(nb);
 
       while (!q.empty()) {
         int p = q.front(); q.pop();
 
-        if (labels[p] == -1) labels[p] = cluster_id;
+        if (labels[p] == -1) labels[p] = next_cluster_label;
         if (labels[p] != -2) continue;
 
-        labels[p] = cluster_id;
-        auto nbs2 = regionQuery(pts, p, eps_m);
+        labels[p] = next_cluster_label;
+        auto nbs2 = regionQuery(pts, frontier_index, p, eps_m);
         if ((int)nbs2.size() + 1 >= min_pts) {
           for (int nb2 : nbs2) {
             if (labels[nb2] == -2 || labels[nb2] == -1) q.push(nb2);
           }
         }
       }
-      cluster_id++;
+      next_cluster_label++;
     }
     return labels;
   }
@@ -2089,6 +2062,42 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
             wp_idx_ = findNearestIndexOnPath(path_, wp_idx_, 25);
             if (updateDynamicController()) return;
             followPathStep();
+            if (std::abs(last_dwb_cmd_.angular.z) >= 0.45 &&
+                std::abs(last_dwb_cmd_.linear.x) <= 0.06 && !path_.empty()) {
+              const int target_idx = std::min(
+                  wp_idx_ + 1, static_cast<int>(path_.size()) - 1);
+              const auto [target_x, target_y] = gridToWorld(
+                  path_[target_idx].x, path_[target_idx].y);
+              const double desired_yaw = std::atan2(
+                  target_y - robot_.y, target_x - robot_.x);
+              const double yaw_error = std::atan2(
+                  std::sin(desired_yaw - robot_.yaw),
+                  std::cos(desired_yaw - robot_.yaw));
+              double path_yaw = desired_yaw;
+              if (target_idx > 0) {
+                const auto [previous_x, previous_y] = gridToWorld(
+                    path_[target_idx - 1].x, path_[target_idx - 1].y);
+                path_yaw = std::atan2(
+                    target_y - previous_y, target_x - previous_x);
+              } else if (path_.size() > 1) {
+                const auto [next_x, next_y] = gridToWorld(
+                    path_[1].x, path_[1].y);
+                path_yaw = std::atan2(next_y - target_y, next_x - target_x);
+              }
+              const double path_yaw_error = std::atan2(
+                  std::sin(path_yaw - robot_.yaw),
+                  std::cos(path_yaw - robot_.yaw));
+              RCLCPP_WARN_THROTTLE(
+                  get_logger(), *get_clock(), 1000,
+                  "[%s] DWB TURN DIAG cmd=(%.3f, %.3f) yaw=%.3f "
+                  "bearing=%.3f bearing_error=%.3f path_yaw=%.3f "
+                  "path_yaw_error=%.3f target_idx=%d/%zu target=(%.2f, %.2f) "
+                  "robot=(%.2f, %.2f) map=%s",
+                  robot_id_.c_str(), last_dwb_cmd_.linear.x,
+                  last_dwb_cmd_.angular.z, robot_.yaw, desired_yaw, yaw_error,
+                  path_yaw, path_yaw_error, target_idx, path_.size(), target_x, target_y,
+                  robot_.x, robot_.y, using_local_map_ ? "LOCAL" : "MERGE");
+            }
             if ((this->now() - last_dwb_cmd_time_).seconds() <= dwb_cmd_timeout_s_) {
               cmd_pub_->publish(last_dwb_cmd_);
             } else {

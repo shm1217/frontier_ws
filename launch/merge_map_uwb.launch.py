@@ -33,7 +33,7 @@ def generate_launch_description():
             "use_mock_uwb", default_value="true",
             description="하드웨어 UWB 사용 시 false, Gazebo에서는 true"),
         DeclareLaunchArgument(
-            "use_sim_time", default_value="false",
+            "use_sim_time", default_value="true",
             description="Gazebo /clock 사용 여부"),
         DeclareLaunchArgument(
             "tb3_0_front_serial_port", default_value="/dev/ttyUSB_tb3_0_front"),
@@ -57,11 +57,11 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "model_states_topic", default_value="/gazebo/model_states"),
         DeclareLaunchArgument(
-            "initial_world_x", default_value="[0.0,0.0,0.0]"),
+            "initial_world_x", default_value="[-4.0,-4.0,1.3]"),
         DeclareLaunchArgument(
-            "initial_world_y", default_value="[0.0,0.0,0.0]"),
+            "initial_world_y", default_value="[5.6,-3.0,1.001]"),
         DeclareLaunchArgument(
-            "initial_world_yaw", default_value="[0.0,0.0,0.0]"),
+            "initial_world_yaw", default_value="[-1.78,1.78,3.14]"),
 
 
         ## 시뮬레이션 사용 시 실행됨
