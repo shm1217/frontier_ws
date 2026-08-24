@@ -18,16 +18,16 @@ controller_server:
     general_goal_checker:
       plugin: nav2_controller::SimpleGoalChecker
       stateful: true
-      xy_goal_tolerance: 0.20
+      xy_goal_tolerance: 0.10
       yaw_goal_tolerance: 0.35
 
     FollowPath:
       plugin: dwb_core::DWBLocalPlanner
       debug_trajectory_details: true
-      min_vel_x: 0.0
+      min_vel_x: 0.02
       max_vel_x: 0.10
       max_vel_theta: 0.60
-      min_speed_xy: 0.0
+      min_speed_xy: 0.02
       min_speed_theta: 0.10
       max_speed_xy: 0.10
       acc_lim_x: 0.20
@@ -44,11 +44,15 @@ controller_server:
       stateful: true
       critics: [RotateToGoal, Oscillation, BaseObstacle, GoalAlign, PathAlign, PathDist, GoalDist]
       BaseObstacle.scale: 2.0
-      PathAlign.scale: 6.0 # 기존값: 12.0 
+      PathAlign.scale: 6.0 # 기존값: 12.0 # 진행방향 = 경로 방향 정렬도
+      # 높을수록 전역 경로를 따르도록 함
+
       PathAlign.forward_point_distance: 0.15
       GoalAlign.scale: 5.0 # 기존값: 10.0
       GoalAlign.forward_point_distance: 0.15
-      PathDist.scale: 16.0 # 기존값: 16.0
+      PathDist.scale: 16.0 # 기존값: 16.0 # 경로에서 떨어진 정도
+      # 높을수록 전역 경로를 따르도록 함
+
       GoalDist.scale: 12.0 # 기존값: 12.0
       RotateToGoal.scale: 24.0
       RotateToGoal.slowing_factor: 5.0
