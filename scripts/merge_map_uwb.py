@@ -289,24 +289,24 @@ class MergeMapUwb(Node):
         else:
             self.get_logger().info("manual rendezvous cancelled for all robots")
 
-    # 현재 맵 정합의 유효 상태를 Bool 토픽으로 발행
+    # 현재 맵 정합의 성공 여부를 Bool 토픽으로 발행
     def publish_valid(self, value):
         msg = Bool()
         msg.data = bool(value)
         self.valid_pub.publish(msg)
 
-    # 로봇별 최신 점유 격자 맵 저장
+    # 로봇별 최신 맵 저장
     def on_map(self, msg, robot):
         self.maps[robot] = msg
 
-    # 쿼터니언에서 yaw 계산
+    # TF에서 받은 쿼터니언을 yaw로 변환
     @staticmethod
     def quaternion_yaw(q):
         return math.atan2(
             2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
         )
 
-    # 로봇 앞뒤 태그의 샘플 저장
+    # 로봇 앞뒤 UWB 태그의 샘플 저장
     def on_range(self, msg, robot, tag):
         if not math.isfinite(msg.range) or msg.range <= 0.0:
             return
@@ -433,7 +433,7 @@ class MergeMapUwb(Node):
         rmse = float(np.sqrt(np.mean(np.minimum(residual**2, 1.0))))
         return anchor, rmse
 
-    # 점유 격자를 특징점 검출에 사용할 흑백 장애물 영상으로 변환
+    # 점유 격자를 특징점 검출에 사용할 흑백 장애물 이미지로 변환
     @staticmethod
     def map_image(msg):
         data = np.asarray(msg.data, dtype=np.int16).reshape(
@@ -647,7 +647,7 @@ class MergeMapUwb(Node):
             float(-yaw),
         )
 
-    # 반복적인 맵 겹침 평가에 사용할 기준 맵 데이터와 벽 거리 정보 준비
+    # overlap 평가에 사용할 기준 맵의 장애물 정보 준비 
     def make_overlap_context(self, ref):
         ref_data = np.asarray(ref.data, dtype=np.int16).reshape(
             ref.info.height, ref.info.width
@@ -698,7 +698,7 @@ class MergeMapUwb(Node):
         coverage = float(known_count / len(xy))
         return score, agree_count, conflict_count, known_count, coverage
 
-    # 두 맵에서 추정한 공통 앵커가 일치하도록 yaw 기반 변환 계산
+    # yaw가 주어졌을 때 두 맵의 앵커 위치가 겹치도록 tx, ty 계산 
     @staticmethod
     def anchor_constrained_transform(yaw, anchor_ref, anchor_mov):
         """Return map1->map0 SE(2) whose common-anchor positions coincide."""
@@ -783,7 +783,7 @@ class MergeMapUwb(Node):
             best_transform, best_metrics = stage_transform, stage_metrics
         return best_transform, best_metrics
 
-    # 특징점, 맵 겹침 및 앵커 제약을 종합해 두 맵 사이 최적 변환 선택
+    # 두 로컬 맵 사이의 최종 변환을 선택 
     def select_transform(self, ref_ns, mov_ns):
         ref, mov = self.maps[ref_ns], self.maps[mov_ns]
         yaw_hypotheses, feature_stats = self.feature_candidates(ref, mov)
