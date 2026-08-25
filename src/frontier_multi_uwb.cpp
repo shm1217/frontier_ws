@@ -133,6 +133,11 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
       this->create_subscription<geometry_msgs::msg::PoseStamped>(
         rendezvous_anchor_topic_, 10,
         std::bind(&FrontierExplorerMulti::onRendezvousAnchor, this, std::placeholders::_1));
+    auto merge_valid_qos = rclcpp::QoS(rclcpp::KeepLast(1))
+        .reliable().transient_local();
+    merge_map_valid_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+      "/merge_map_uwb_valid", merge_valid_qos,
+      std::bind(&FrontierExplorerMulti::onMergeMapValid, this, std::placeholders::_1));
 
     cmd_pub_ = this->create_publisher<geometry_msgs::msg::Twist>(cmd_topic_, 10);
     dwb_cmd_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
@@ -1260,13 +1265,14 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
 
   // 정지 속도 명령 발행
   void FrontierExplorerMulti::publishStop(const char* reason) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "[%s] STOP reason: %s", robot_id_.c_str(), reason);
     clearPathAndCancel();
     geometry_msgs::msg::Twist cmd;
     cmd.linear.x = 0.0;
     cmd.angular.z = 0.0;
     cmd_pub_->publish(cmd);
-
-    (void)reason;
   }
 
   // 현재 위치와 가장 가까운 경로 인덱스 검색
@@ -1875,6 +1881,27 @@ FrontierExplorerMulti ::FrontierExplorerMulti()
           get_logger(), "[%s] rendezvous anchor active in %s: (%.2f, %.2f)",
           robot_id_.c_str(), msg->header.frame_id.c_str(),
           msg->pose.position.x, msg->pose.position.y);
+    }
+  }
+
+  // 맵 정합이 완료되면 남아 있는 rendezvous 명령과 경로를 즉시 해제한다.
+  void FrontierExplorerMulti::onMergeMapValid(
+      const std_msgs::msg::Bool::SharedPtr msg) {
+    if (!msg->data) return;
+
+    const bool rendezvous_was_active = has_rendezvous_anchor_ ||
+        following_rendezvous_ || rendezvous_replan_requested_;
+    has_rendezvous_anchor_ = false;
+    rendezvous_arrived_ = false;
+    following_rendezvous_ = false;
+    rendezvous_replan_requested_ = false;
+
+    if (rendezvous_was_active) {
+      clearPathAndCancel();
+      RCLCPP_INFO(
+          get_logger(),
+          "[%s] merge valid -> rendezvous cancelled; resuming frontier exploration",
+          robot_id_.c_str());
     }
   }
 

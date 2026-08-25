@@ -59,7 +59,7 @@ class MergeMapUwb(Node):
             self.declare_parameter("tag_offset_from_base_m", 0.15).value
         )
         self.min_samples = int(self.declare_parameter("min_range_samples", 10).value)
-        self.max_samples = int(self.declare_parameter("max_range_samples", 50).value)
+        self.max_samples = int(self.declare_parameter("max_range_samples", 20).value)
         self.min_motion = float(
             self.declare_parameter("min_sample_motion_m", 0.1).value
         )
@@ -261,6 +261,9 @@ class MergeMapUwb(Node):
         self.map_pub = self.create_publisher(
             OccupancyGrid, "/merge_map", output_qos
         )
+        self.partial_map_pub = self.create_publisher(
+            OccupancyGrid, "/partial_merge_map", output_qos
+        )
         self.valid_pub = self.create_publisher(
             Bool, "/merge_map_uwb_valid", output_qos
         )
@@ -295,6 +298,21 @@ class MergeMapUwb(Node):
         msg.data = bool(value)
         self.valid_pub.publish(msg)
 
+    # 정합 성공 뒤에는 수동/자동 rendezvous 명령을 즉시 종료한다.
+    def cancel_rendezvous_after_merge(self):
+        was_active = any(self.rendezvous_forced.values()) or any(
+            self.rendezvous_active.values()
+        )
+        now = self.get_clock().now()
+        for ns in self.robots:
+            self.rendezvous_forced[ns] = False
+            self.rendezvous_active[ns] = False
+            self.rendezvous_cycle_start[ns] = now
+        if was_active:
+            self.get_logger().info(
+                "map registration complete -> rendezvous commands cancelled"
+            )
+
     # 로봇별 최신 맵 저장
     def on_map(self, msg, robot):
         self.maps[robot] = msg
@@ -314,9 +332,19 @@ class MergeMapUwb(Node):
         base_frame = f"{robot}/{self.base_suffix}"
         try:
             tf = self.tf_buffer.lookup_transform(
-                map_frame, base_frame, rclpy.time.Time(), timeout=Duration(seconds=0.1)
+                map_frame,
+                base_frame,
+                rclpy.time.Time.from_msg(msg.header.stamp),
+                timeout=Duration(seconds=0.1),
             )
-        except Exception:
+        except Exception as exc:
+            stamp = msg.header.stamp
+            self.get_logger().warn(
+                f"[{robot}] UWB {tag} sample dropped: TF unavailable "
+                f"({map_frame} <- {base_frame}) at "
+                f"{stamp.sec}.{stamp.nanosec:09d}: {exc}",
+                throttle_duration_sec=2.0,
+            )
             return
         base_x = float(tf.transform.translation.x)
         base_y = float(tf.transform.translation.y)
@@ -967,15 +995,20 @@ class MergeMapUwb(Node):
         return best
 
     # 서로 겹치는 로봇 맵들을 연결해 모든 맵의 위치를 기준 맵에 맞춤 
-    def build_overlap_transform_graph(self):
+    def build_overlap_transform_graph(self, robots=None, reference_robot=None):
         """Register every map pair and keep the best connected edge set.
 
         Each accepted edge stores a transform from ``mov`` into ``ref``.  A
         maximum-spanning-tree selection prefers strongly overlapping pairs, so
         a robot need not overlap the configured reference map directly.
         """
-        for ref_index, ref_ns in enumerate(self.robots):
-            for mov_ns in self.robots[ref_index + 1 :]:
+        robots = list(self.robots if robots is None else robots)
+        reference_robot = (
+            self.reference_robot if reference_robot is None else reference_robot
+        )
+
+        for ref_index, ref_ns in enumerate(robots):
+            for mov_ns in robots[ref_index + 1 :]:
                 pair_key = (ref_ns, mov_ns)
                 self.get_logger().info(f"evaluating map pair: {mov_ns} -> {ref_ns}")
                 result = self.select_transform(ref_ns, mov_ns)
@@ -1027,14 +1060,18 @@ class MergeMapUwb(Node):
                         f"current_score={edge['score']:.3f}"
                     )
 
-        candidates = list(self.edge_cache.values())
+        robot_set = set(robots)
+        candidates = [
+            edge for edge in self.edge_cache.values()
+            if edge["ref"] in robot_set and edge["mov"] in robot_set
+        ]
         self.get_logger().info(
             f"building transform graph from {len(candidates)} cached map edges"
         )
 
         candidates.sort(key=lambda edge: edge["score"], reverse=True)
 
-        parent = {ns: ns for ns in self.robots}
+        parent = {ns: ns for ns in robots}
 
         # 해당 로봇 맵이 속한 연결 그룹의 대표 맵 찾기 
         def find(ns):
@@ -1056,16 +1093,16 @@ class MergeMapUwb(Node):
                 f"score={edge['score']:.3f}, overlap={edge['overlap']:.3f}, "
                 f"coverage={edge['coverage']:.3f}"
             )
-            if len(selected) == len(self.robots) - 1:
+            if len(selected) == len(robots) - 1:
                 break
 
-        if len(selected) != len(self.robots) - 1:
+        if len(selected) != len(robots) - 1:
             connected = sorted(
-                ns for ns in self.robots if find(ns) == find(self.reference_robot)
+                ns for ns in robots if find(ns) == find(reference_robot)
             )
             self.get_logger().error(
                 "map registration graph is disconnected: "
-                f"connected_to_{self.reference_robot}={connected}"
+                f"connected_to_{reference_robot}={connected}"
             )
             return None
 
@@ -1079,8 +1116,8 @@ class MergeMapUwb(Node):
                 (ref_ns, self.inverse_transform(mov_to_ref))
             )
 
-        transforms = {self.reference_robot: (0.0, 0.0, 0.0)}
-        queue = deque([self.reference_robot])
+        transforms = {reference_robot: (0.0, 0.0, 0.0)}
+        queue = deque([reference_robot])
         while queue:
             current = queue.popleft()
             for neighbor, neighbor_to_current in adjacency[current]:
@@ -1110,11 +1147,18 @@ class MergeMapUwb(Node):
         self.tf_static.sendTransform(messages)
 
     # merge map 발행 
-    def merge_and_publish(self):
+    def merge_and_publish(
+        self, transforms=None, publisher=None, frame_id=None, robots=None
+    ):
+        transforms = self.transforms if transforms is None else transforms
+        publisher = self.map_pub if publisher is None else publisher
+        frame_id = self.global_frame if frame_id is None else frame_id
+        robots = list(transforms.keys()) if robots is None else list(robots)
         res = self.output_resolution
         bounds = []
-        for ns, msg in self.maps.items():
-            t = self.transforms[ns]
+        for ns in robots:
+            msg = self.maps[ns]
+            t = transforms[ns]
             corners = np.array(
                 [
                     [msg.info.origin.position.x, msg.info.origin.position.y],
@@ -1143,13 +1187,14 @@ class MergeMapUwb(Node):
         width, height = np.ceil((max_xy - min_xy) / res).astype(int)
         sums = np.zeros((height, width), dtype=np.float32)
         counts = np.zeros((height, width), dtype=np.int16)
-        for ns, msg in self.maps.items():
+        for ns in robots:
+            msg = self.maps[ns]
             data = np.asarray(msg.data, dtype=np.int16).reshape(
                 msg.info.height, msg.info.width
             )
             ys, xs = np.where(data >= 0)
             xy = self.pixel_to_local(msg, np.column_stack((xs, ys)))
-            t = self.transforms[ns]
+            t = transforms[ns]
             c, s = math.cos(t[2]), math.sin(t[2])
             wx = c * xy[:, 0] - s * xy[:, 1] + t[0]
             wy = s * xy[:, 0] + c * xy[:, 1] + t[1]
@@ -1163,7 +1208,7 @@ class MergeMapUwb(Node):
         out[seen] = np.clip(np.rint(sums[seen] / counts[seen]), 0, 100).astype(np.int8)
         merged = OccupancyGrid()
         merged.header.stamp = self.get_clock().now().to_msg()
-        merged.header.frame_id = self.global_frame
+        merged.header.frame_id = frame_id
         merged.info.resolution = res
         merged.info.width, merged.info.height = int(width), int(height)
         merged.info.origin.position.x, merged.info.origin.position.y = map(
@@ -1171,7 +1216,7 @@ class MergeMapUwb(Node):
         )
         merged.info.origin.orientation.w = 1.0
         merged.data = out.ravel().tolist()
-        self.map_pub.publish(merged)
+        publisher.publish(merged)
 
     # 앵커 추정, 맵 정합 및 병합 실행
     def tick(self):
@@ -1237,6 +1282,39 @@ class MergeMapUwb(Node):
 
         self.publish_rendezvous_commands()
 
+        ready_robots = [
+            ns for ns in self.robots
+            if ns in self.maps
+            and ns in self.anchors
+            and self.anchors[ns][1] <= self.max_anchor_rmse
+        ]
+        if 2 <= len(ready_robots) < len(self.robots):
+            partial_reference = (
+                self.reference_robot
+                if self.reference_robot in ready_robots
+                else ready_robots[0]
+            )
+            self.get_logger().info(
+                "attempting partial map registration: "
+                f"members={ready_robots}, reference={partial_reference}"
+            )
+            partial_transforms = self.build_overlap_transform_graph(
+                ready_robots, partial_reference
+            )
+            if partial_transforms is not None:
+                partial_frame = f"{partial_reference}/map"
+                self.merge_and_publish(
+                    transforms=partial_transforms,
+                    publisher=self.partial_map_pub,
+                    frame_id=partial_frame,
+                    robots=ready_robots,
+                )
+                self.get_logger().info(
+                    "partial map published on /partial_merge_map: "
+                    f"members={ready_robots}, frame={partial_frame}; "
+                    "/merge_map remains invalid"
+                )
+
         if any(ns not in self.maps for ns in self.robots):
             self.get_logger().warn(f"waiting maps: have={list(self.maps.keys())}")
             return
@@ -1285,6 +1363,7 @@ class MergeMapUwb(Node):
 
         self.locked = True
         self.get_logger().info("map registration complete -> transforms are now LOCKED")
+        self.cancel_rendezvous_after_merge()
         self.broadcast_transforms()
         self.publish_valid(True)
         self.merge_and_publish()

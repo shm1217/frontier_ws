@@ -21,6 +21,7 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <sensor_msgs/msg/laser_scan.hpp>
+#include <std_msgs/msg/bool.hpp>
 
 #include <cmath>
 #include <vector>
@@ -164,6 +165,7 @@ private:
     void onMap(const nav_msgs::msg::OccupancyGrid::SharedPtr msg);
     void onScan(const sensor_msgs::msg::LaserScan::SharedPtr msg);
     void onRendezvousAnchor(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
+    void onMergeMapValid(const std_msgs::msg::Bool::SharedPtr msg);
     void onTimer();
 
     void addToBlacklist(const GridPose& g, double ttl_s = -1.0,
@@ -176,6 +178,7 @@ private:
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr rendezvous_anchor_sub_;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr merge_map_valid_sub_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_pub_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr dwb_cmd_sub_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr dynamic_cmd_pub_;
